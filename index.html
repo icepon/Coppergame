@@ -81,7 +81,7 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- Web Audio API Synth (เสียงสังเคราะห์แบบ 8-bit โดยไม่ต้องพึ่งไฟล์นอก) ---
+// --- Web Audio API Synth ---
 let audioCtx = null;
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -92,12 +92,11 @@ function playSound(type) {
   const now = audioCtx.currentTime;
 
   if (type === 'bone') {
-    // เสียงเก็บกระดูก Ding-Dong
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(523.25, now); // C5
-    osc.frequency.setValueAtTime(783.99, now + 0.08); // G5
+    osc.frequency.setValueAtTime(523.25, now);
+    osc.frequency.setValueAtTime(783.99, now + 0.08);
     gain.gain.setValueAtTime(0.3, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
     osc.connect(gain);
@@ -105,7 +104,6 @@ function playSound(type) {
     osc.start(now);
     osc.stop(now + 0.25);
   } else if (type === 'crash') {
-    // เสียงชนอึ Splat/Crash ต่ำๆ
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sawtooth';
@@ -118,7 +116,6 @@ function playSound(type) {
     osc.start(now);
     osc.stop(now + 0.35);
   } else if (type === 'bark') {
-    // เสียงเห่าสั้นๆ
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'square';
@@ -133,18 +130,21 @@ function playSound(type) {
   }
 }
 
-// --- Game Variables ---
+// --- การตั้งค่าความเร็วและสมดุลเกมใหม่ ---
+const INITIAL_SPEED = 3.2; // ความเร็วเริ่มต้นสบายๆ
+const MAX_SPEED = 10.0;    // ล็อกความเร็วสูงสุดไม่ให้เร็วเกินไป
+
 let state = 'PLAY';
 let score = 0;
 let level = 1;
-let speed = 4;
+let speed = INITIAL_SPEED;
 let frameCount = 0;
 let shakeTime = 0;
 
 const dog = {
   x: 220,
   y: 480,
-  speed: 6.5,
+  speed: 5.8,
   moveLeft: false,
   moveRight: false
 };
@@ -157,17 +157,14 @@ const floatingTexts = [];
 let poopSpawnTimer = 0;
 let boneSpawnTimer = 0;
 
-// วาดฉากทางเดิน
 function drawEnvironment() {
   ctx.fillStyle = '#8f9fa9';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // ขอบตึกซ้าย-ขวา
   ctx.fillStyle = '#c5a089';
   ctx.fillRect(0, 0, 30, canvas.height);
   ctx.fillRect(canvas.width - 30, 0, 30, canvas.height);
 
-  // เส้นตารางทางเท้า
   ctx.strokeStyle = '#76858e';
   ctx.lineWidth = 2;
   const tileOffset = (frameCount * speed) % 60;
@@ -178,20 +175,18 @@ function drawEnvironment() {
     ctx.stroke();
   }
 
-  // ขอบฟุตบาท
   ctx.strokeStyle = '#374149';
   ctx.lineWidth = 4;
   ctx.strokeRect(30, -5, canvas.width - 60, canvas.height + 10);
 }
 
-// วาดน้องหมา French Bulldog
 function drawFrenchie(x, y, frame) {
   ctx.save();
   ctx.translate(x, y);
 
-  const bob = Math.sin(frame * 0.35) * 3;
+  const bob = Math.sin(frame * 0.25) * 2.5;
 
-  // หูทรงค้างคาว (Bat Ears)
+  // หู
   ctx.fillStyle = '#e88ba5';
   ctx.fillRect(-22, -34 + bob, 12, 20);
   ctx.fillRect(10, -34 + bob, 12, 20);
@@ -200,35 +195,33 @@ function drawFrenchie(x, y, frame) {
   ctx.strokeRect(-22, -34 + bob, 12, 20);
   ctx.strokeRect(10, -34 + bob, 12, 20);
 
-  // ลำตัวลายวัว (Pied)
+  // ลำตัว
   ctx.fillStyle = '#f8f8f8';
   ctx.fillRect(-20, -10 + bob, 40, 32);
   ctx.fillStyle = '#222';
   ctx.fillRect(-20, -6 + bob, 18, 20);
 
-  // ขาและแอนิเมชั่นวิ่ง
-  const legOffset = Math.sin(frame * 0.45) * 6;
+  // ขา
+  const legOffset = Math.sin(frame * 0.35) * 5;
   ctx.fillStyle = '#f8f8f8';
   ctx.fillRect(-22, 18 + legOffset, 12, 14);
   ctx.fillRect(10, 18 - legOffset, 12, 14);
 
-  // หัวสีดำพร้อมแถบขาวตรงกลาง
+  // หัว
   ctx.fillStyle = '#222';
   ctx.fillRect(-24, -26 + bob, 48, 28);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(-6, -26 + bob, 12, 28);
 
-  // หน้าสั้นและปาก
+  // หน้า ปาก ลิ้น
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(-14, -8 + bob, 28, 16);
   ctx.fillStyle = '#111';
   ctx.fillRect(-5, -6 + bob, 10, 6);
-
-  // ลิ้นห้อย
   ctx.fillStyle = '#ff5b79';
   ctx.fillRect(-4, 2 + bob, 8, 5);
 
-  // ตาโต
+  // ตา
   ctx.fillStyle = '#000';
   ctx.fillRect(-16, -18 + bob, 6, 8);
   ctx.fillRect(10, -18 + bob, 6, 8);
@@ -239,7 +232,6 @@ function drawFrenchie(x, y, frame) {
   ctx.restore();
 }
 
-// วาดกองอึหมา
 function drawPoop(p) {
   ctx.save();
   ctx.translate(p.x, p.y);
@@ -260,7 +252,6 @@ function drawPoop(p) {
   ctx.restore();
 }
 
-// วาดไอเทมกระดูก (Bone)
 function drawBone(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
@@ -268,11 +259,9 @@ function drawBone(b) {
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
 
-  // แกนกลาง
   ctx.fillRect(-12, -4, 24, 8);
   ctx.strokeRect(-12, -4, 24, 8);
 
-  // ปุ่มหัวกระดูก
   [-12, 12].forEach(ox => {
     [-4, 4].forEach(oy => {
       ctx.beginPath();
@@ -285,7 +274,6 @@ function drawBone(b) {
   ctx.restore();
 }
 
-// วาด UI หน้าปัด & คะแนน
 function drawUI() {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
   ctx.fillRect(12, 12, 130, 48);
@@ -317,7 +305,9 @@ function drawUI() {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  const angle = -Math.PI * 0.8 + (Math.min(speed, 18) / 18) * Math.PI * 1.6;
+  // ปรับการคำนวณเข็มความเร็วให้สอดคล้องกับ Max Speed
+  const currentRatio = (speed - INITIAL_SPEED) / (MAX_SPEED - INITIAL_SPEED);
+  const angle = -Math.PI * 0.8 + Math.min(Math.max(currentRatio, 0), 1) * Math.PI * 1.6;
   ctx.beginPath();
   ctx.moveTo(gx, gy);
   ctx.lineTo(gx + Math.cos(angle) * 22, gy + Math.sin(angle) * 22);
@@ -329,42 +319,42 @@ function drawUI() {
 function update() {
   if (state === 'PLAY') {
     frameCount++;
-    score += speed * 0.04;
+    score += speed * 0.035;
 
-    // ความยากเพิ่มตามความเร็ว
-    speed = 4.5 + Math.floor(score / 120) * 1.1;
-    level = 1 + Math.floor(score / 250);
+    // --- การค่อยๆ เร่งความเร็วแบบนุ่มนวล ---
+    // เพิ่มความเร็วทีละน้อยมาก (ทุกๆ 500 คะแนน จะเร็วขึ้น 0.6 และไม่เกิน MAX_SPEED)
+    speed = Math.min(MAX_SPEED, INITIAL_SPEED + (score / 500) * 0.6);
+    level = 1 + Math.floor(score / 450);
 
-    // ฝุ่นใต้เท้าน้องหมา
-    if (frameCount % 4 === 0) {
+    // ละอองฝุ่น
+    if (frameCount % 6 === 0) {
       particles.push({
-        x: dog.x + (Math.random() * 24 - 12),
+        x: dog.x + (Math.random() * 20 - 10),
         y: dog.y + 28,
-        r: 3 + Math.random() * 3,
-        alpha: 1
+        r: 2.5 + Math.random() * 2.5,
+        alpha: 0.9
       });
     }
 
-    // เลื่อนตำแหน่งน้องหมา
     if (dog.moveLeft && dog.x > 55) dog.x -= dog.speed;
     if (dog.moveRight && dog.x < canvas.width - 55) dog.x += dog.speed;
 
-    // สุ่มเสกอึ
+    // สุ่มเสกอึ (ระยะห่างขึ้นกับความเร็ว ไม่ถี่เกินไป)
     poopSpawnTimer++;
-    const poopInterval = Math.max(22, 65 - level * 4);
+    const poopInterval = Math.max(38, Math.floor(95 - (speed - INITIAL_SPEED) * 5));
     if (poopSpawnTimer >= poopInterval) {
       poopSpawnTimer = 0;
       poops.push({
         x: 60 + Math.random() * (canvas.width - 120),
         y: -30,
-        w: 32 + Math.random() * 8,
+        w: 30 + Math.random() * 8,
         h: 22
       });
     }
 
-    // สุ่มเสกกระดูกโบนัส
+    // เสกกระดูก
     boneSpawnTimer++;
-    if (boneSpawnTimer >= 140) {
+    if (boneSpawnTimer >= 170) {
       boneSpawnTimer = 0;
       bones.push({
         x: 65 + Math.random() * (canvas.width - 130),
@@ -372,7 +362,7 @@ function update() {
       });
     }
 
-    // ตรวจสอบกระดูก
+    // ตรวจจับกระดูก
     for (let i = bones.length - 1; i >= 0; i--) {
       const b = bones[i];
       b.y += speed;
@@ -387,30 +377,30 @@ function update() {
       if (b.y > canvas.height + 40) bones.splice(i, 1);
     }
 
-    // ตรวจสอบกองอึ (Collision Detection)
+    // ตรวจสอบการชนกองอึ
     for (let i = poops.length - 1; i >= 0; i--) {
       const p = poops[i];
       p.y += speed;
 
-      if (Math.hypot(dog.x - p.x, (dog.y - 8) - p.y) < 27) {
+      if (Math.hypot(dog.x - p.x, (dog.y - 8) - p.y) < 25) {
         playSound('crash');
-        shakeTime = 20;
+        shakeTime = 18;
         state = 'GAMEOVER';
       }
       if (p.y > canvas.height + 40) poops.splice(i, 1);
     }
   }
 
-  // อัปเดตฝุ่น
+  // Effect ฝุ่นจาง
   for (let i = particles.length - 1; i >= 0; i--) {
-    particles[i].y += speed * 0.4;
-    particles[i].alpha -= 0.05;
+    particles[i].y += speed * 0.3;
+    particles[i].alpha -= 0.04;
     if (particles[i].alpha <= 0) particles.splice(i, 1);
   }
 
   // ข้อความลอย +50
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
-    floatingTexts[i].y -= 1.5;
+    floatingTexts[i].y -= 1.2;
     floatingTexts[i].alpha -= 0.03;
     if (floatingTexts[i].alpha <= 0) floatingTexts.splice(i, 1);
   }
@@ -420,17 +410,15 @@ function update() {
 
 function draw() {
   ctx.save();
-  // Screen Shake effect เวลาชน
   if (shakeTime > 0) {
-    const ox = (Math.random() - 0.5) * 10;
-    const oy = (Math.random() - 0.5) * 10;
+    const ox = (Math.random() - 0.5) * 8;
+    const oy = (Math.random() - 0.5) * 8;
     ctx.translate(ox, oy);
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawEnvironment();
 
-  // วาดฝุ่น
   particles.forEach(pt => {
     ctx.fillStyle = `rgba(220, 220, 220, ${pt.alpha})`;
     ctx.beginPath();
@@ -438,12 +426,10 @@ function draw() {
     ctx.fill();
   });
 
-  // วาดสิ่งกีดขวาง & ของสะสม
   bones.forEach(b => drawBone(b));
   poops.forEach(p => drawPoop(p));
   drawFrenchie(dog.x, dog.y, frameCount);
 
-  // วาดข้อความคะแนนลอย
   floatingTexts.forEach(ft => {
     ctx.fillStyle = `rgba(255, 230, 0, ${ft.alpha})`;
     ctx.font = 'bold 20px Courier New';
@@ -481,14 +467,13 @@ function resetGame() {
   playSound('bark');
   score = 0;
   level = 1;
-  speed = 4.5;
+  speed = INITIAL_SPEED;
   dog.x = 220;
   poops.length = 0;
   bones.length = 0;
   state = 'PLAY';
 }
 
-// ควบคุมด้วยคีย์บอร์ด
 window.addEventListener('keydown', (e) => {
   initAudio();
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') dog.moveLeft = true;
@@ -501,7 +486,6 @@ window.addEventListener('keyup', (e) => {
   if (e.code === 'ArrowRight' || e.code === 'KeyD') dog.moveRight = false;
 });
 
-// ควบคุมด้วยปุ่มบนหน้าจอ
 const leftBtn = document.getElementById('btn-left');
 const rightBtn = document.getElementById('btn-right');
 
