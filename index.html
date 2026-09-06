@@ -1,36 +1,40 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Paw Patrol Pontificator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: manipulation;
     }
     body {
-      margin: 0;
-      background: #1b1a1f;
+      background: #2b3a4a;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      font-family: 'Courier New', monospace;
+      font-family: 'Press Start 2P', monospace;
+      color: #fff;
     }
     #game-container {
       position: relative;
-      width: 100%;
-      max-width: 410px;
-      height: 92vh;
-      max-height: 680px;
-      border: 4px solid #141414;
-      border-radius: 12px;
+      width: 480px;
+      height: 640px;
+      max-width: 100vw;
+      max-height: 100vh;
+      background: #000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
       overflow: hidden;
-      box-shadow: 0 16px 36px rgba(0,0,0,0.8);
-      background: #393e46;
+      border: 4px solid #1a232c;
+      border-radius: 8px;
     }
     canvas {
       display: block;
@@ -38,532 +42,424 @@
       height: 100%;
       image-rendering: pixelated;
     }
+    /* On-screen controls */
     .touch-controls {
       position: absolute;
-      bottom: 16px;
+      bottom: 20px;
       left: 0;
       width: 100%;
       display: flex;
       justify-content: space-between;
-      padding: 0 16px;
+      padding: 0 24px;
       pointer-events: none;
     }
-    .btn {
+    .ctrl-btn {
       pointer-events: auto;
-      background: #f4f4f4;
-      border: 3px solid #1c1c1c;
-      border-radius: 8px;
-      font-size: 20px;
-      font-weight: 900;
-      width: 58px;
+      background: #fff;
+      border: 4px solid #000;
+      border-radius: 6px;
+      width: 64px;
       height: 52px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      box-shadow: 0 4px #000;
-      color: #111;
+      box-shadow: 0 4px 0 #000;
+      font-size: 24px;
+      font-weight: bold;
+      color: #000;
     }
-    .btn:active {
-      transform: translateY(3px);
-      box-shadow: 0 1px #000;
-      background: #d8d8d8;
+    .ctrl-btn:active {
+      transform: translateY(4px);
+      box-shadow: 0 0 0 #000;
+    }
+    /* Game Over Modal */
+    #game-over-screen {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+    #game-over-screen h1 {
+      color: #ff3333;
+      font-size: 24px;
+      margin-bottom: 20px;
+      text-shadow: 3px 3px 0 #000;
+    }
+    #game-over-screen p {
+      font-size: 14px;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    #restart-btn {
+      margin-top: 20px;
+      font-family: inherit;
+      background: #ffcc00;
+      border: 3px solid #000;
+      padding: 12px 24px;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #000;
+    }
+    #restart-btn:active {
+      transform: translateY(4px);
+      box-shadow: 0 0 0 #000;
     }
   </style>
 </head>
 <body>
 
-<div id="game-container">
-  <canvas id="gameCanvas" width="400" height="640"></canvas>
-  <div class="touch-controls">
-    <button class="btn" id="btn-left">◀</button>
-    <button class="btn" id="btn-right">▶</button>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="480" height="640"></canvas>
+    
+    <div class="touch-controls">
+      <div style="display: flex; gap: 8px;">
+        <button class="ctrl-btn" id="btn-left">◀</button>
+      </div>
+      <button class="ctrl-btn" id="btn-right">▶</button>
+    </div>
+
+    <div id="game-over-screen">
+      <h1>STEPPED ON POOP!</h1>
+      <p id="final-score">SCORE: 0</p>
+      <p id="final-level">LEVEL: 1</p>
+      <button id="restart-btn">PLAY AGAIN</button>
+    </div>
   </div>
-</div>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gameOverScreen = document.getElementById("game-over-screen");
+    const finalScoreEl = document.getElementById("final-score");
+    const finalLevelEl = document.getElementById("final-level");
+    const restartBtn = document.getElementById("restart-btn");
 
-// --- Audio Synth (8-bit Web Audio) ---
-let audioCtx = null;
-function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-}
+    // Perspective Projection Parameters
+    const HORIZON_Y = 240; 
+    const ROAD_TOP_W = 140;
+    const ROAD_BOTTOM_W = 440;
+    const ROAD_CENTER_X = 230;
 
-function playSound(type) {
-  if (!audioCtx) return;
-  const now = audioCtx.currentTime;
+    let score = 0;
+    let level = 1;
+    let speed = 0.006;
+    let isGameOver = false;
 
-  if (type === 'bone') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(523.25, now);
-    osc.frequency.setValueAtTime(783.99, now + 0.08);
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.22);
-  } else if (type === 'gold_bone') {
-    // เสียงกระดูกทอง (Fanfare ไพเราะ 3 โน้ต)
-    [659.25, 830.61, 1046.50].forEach((freq, idx) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
-      gain.gain.setValueAtTime(0.22, now + idx * 0.08);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.2);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + idx * 0.08);
-      osc.stop(now + idx * 0.08 + 0.2);
-    });
-  } else if (type === 'crash') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(25, now + 0.35);
-    gain.gain.setValueAtTime(0.4, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.35);
-  } else if (type === 'bark') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(320, now);
-    osc.frequency.exponentialRampToValueAtTime(160, now + 0.12);
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.12);
-  }
-}
+    // Player State
+    const player = {
+      laneX: 0,       // -1.0 (left) to +1.0 (right)
+      targetX: 0,
+      z: 0.92,        // fixed near camera
+      size: 70
+    };
 
-// --- Game Settings & Balances ---
-const INITIAL_SPEED = 3.2;
-const MAX_SPEED = 9.8;
+    // Obstacles
+    let obstacles = [];
+    let spawnTimer = 0;
 
-let state = 'PLAY';
-let score = 0;
-let level = 1;
-let speed = INITIAL_SPEED;
-let frameCount = 0;
-let shakeTime = 0;
+    // Input handlers
+    const keys = {};
+    window.addEventListener("keydown", (e) => { keys[e.key] = true; });
+    window.addEventListener("keyup", (e) => { keys[e.key] = false; });
 
-const dog = {
-  x: 200,
-  y: 510,
-  speed: 5.6,
-  moveLeft: false,
-  moveRight: false
-};
+    // Touch / On-screen Buttons
+    document.getElementById("btn-left").addEventListener("pointerdown", () => keys["ArrowLeft"] = true);
+    document.getElementById("btn-left").addEventListener("pointerup", () => keys["ArrowLeft"] = false);
+    document.getElementById("btn-right").addEventListener("pointerdown", () => keys["ArrowRight"] = true);
+    document.getElementById("btn-right").addEventListener("pointerup", () => keys["ArrowRight"] = false);
 
-const poops = [];
-const bones = [];
-const particles = [];
-const floatingTexts = [];
+    function getPerspectivePos(normX, z) {
+      const y = HORIZON_Y + z * (canvas.height - HORIZON_Y);
+      const halfWidth = (ROAD_TOP_W + z * (ROAD_BOTTOM_W - ROAD_TOP_W)) / 2;
+      const x = ROAD_CENTER_X + normX * halfWidth;
+      const scale = 0.25 + z * 0.95;
+      return { x, y, scale };
+    }
 
-let poopSpawnTimer = 0;
-let boneSpawnTimer = 0;
+    function spawnPoop() {
+      obstacles.push({
+        laneX: (Math.random() * 1.6) - 0.8,
+        z: 0.0,
+        type: Math.random() > 0.8 ? "big" : "normal"
+      });
+    }
 
-// วาดฉากถนนสีเทาเข้ม + ขอบไม้ด้านข้างตามแบบ
-function drawEnvironment() {
-  // พื้นถนน
-  ctx.fillStyle = '#3a3f47';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Drawing Helpers (Pixel Art vector rendering)
+    function drawSkyAndCity() {
+      // Sky
+      ctx.fillStyle = "#8fe1ec";
+      ctx.fillRect(0, 0, canvas.width, HORIZON_Y);
 
-  // ขอบไม้สีน้ำตาลด้านซ้ายและขวา
-  const borderW = 28;
-  ctx.fillStyle = '#4e342e';
-  ctx.fillRect(0, 0, borderW, canvas.height);
-  ctx.fillRect(canvas.width - borderW, 0, borderW, canvas.height);
+      // Distant pixel buildings
+      ctx.fillStyle = "#6fb8c8";
+      ctx.fillRect(200, 150, 45, 90);
+      ctx.fillRect(235, 120, 50, 120);
+      ctx.fillRect(280, 160, 40, 80);
 
-  // เส้นขอบไม้ด้านใน
-  ctx.strokeStyle = '#271915';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(borderW, 0); ctx.lineTo(borderW, canvas.height);
-  ctx.moveTo(canvas.width - borderW, 0); ctx.lineTo(canvas.width - borderW, canvas.height);
-  ctx.stroke();
+      // Left brick building
+      ctx.fillStyle = "#e08d68";
+      ctx.fillRect(0, 70, 130, canvas.height);
+      ctx.fillStyle = "#c77553";
+      ctx.fillRect(125, 70, 15, canvas.height);
+      
+      // Building door/windows
+      ctx.fillStyle = "#793a20";
+      ctx.fillRect(80, 180, 35, 60);
+      ctx.fillStyle = "#8cd3e4";
+      ctx.fillRect(20, 160, 25, 45);
+    }
 
-  // เส้นตารางทางเดิน (แนวนอน)
-  ctx.strokeStyle = '#2d323a';
-  ctx.lineWidth = 2.5;
-  const tileOffset = (frameCount * speed) % 55;
-  for (let y = -55; y < canvas.height; y += 55) {
-    ctx.beginPath();
-    ctx.moveTo(borderW, y + tileOffset);
-    ctx.lineTo(canvas.width - borderW, y + tileOffset);
-    ctx.stroke();
-  }
-}
-
-// วาด Pixel Art สไตล์ตัวหมาเฟรนช์ตามรูป
-function drawPixelFrenchie(x, y, frame) {
-  ctx.save();
-  ctx.translate(Math.round(x), Math.round(y));
-
-  const bob = Math.sin(frame * 0.3) > 0 ? 1 : 0;
-  const p = 3.5; // pixel size
-
-  // หูซ้าย (ขอบดำ ด้านในชมพู)
-  ctx.fillStyle = '#1b1b1f';
-  ctx.fillRect(-5 * p, (-10 + bob) * p, 4 * p, 6 * p);
-  ctx.fillStyle = '#e88ba5';
-  ctx.fillRect(-4 * p, (-9 + bob) * p, 2 * p, 4 * p);
-
-  // หูขวา
-  ctx.fillStyle = '#1b1b1f';
-  ctx.fillRect(2 * p, (-10 + bob) * p, 4 * p, 6 * p);
-  ctx.fillStyle = '#e88ba5';
-  ctx.fillRect(3 * p, (-9 + bob) * p, 2 * p, 4 * p);
-
-  // ลำตัว (ขาว-ดำ สไตล์ Pied)
-  ctx.fillStyle = '#dcdde1';
-  ctx.fillRect(-4 * p, (-2 + bob) * p, 8 * p, 7 * p);
-  ctx.fillStyle = '#1b1b1f';
-  ctx.fillRect(-4 * p, (-1 + bob) * p, 3 * p, 4 * p);
-
-  // ขา (สลับขยับตามแอนิเมชั่น)
-  const legStep = Math.sin(frame * 0.4) > 0;
-  ctx.fillStyle = '#dcdde1';
-  ctx.fillRect(-4 * p, (5 + (legStep ? 1 : -1)) * p, 3 * p, 4 * p);
-  ctx.fillRect(2 * p, (5 + (!legStep ? 1 : -1)) * p, 3 * p, 4 * p);
-
-  // หัว (แถบดำซ้าย-ขวา แถบขาวตรงกลาง)
-  ctx.fillStyle = '#1b1b1f';
-  ctx.fillRect(-5 * p, (-6 + bob) * p, 4 * p, 5 * p); // ปื้นดำซ้าย
-  ctx.fillRect(2 * p, (-6 + bob) * p, 4 * p, 5 * p);  // ปื้นดำขวา
-  ctx.fillStyle = '#f5f6fa';
-  ctx.fillRect(-1 * p, (-6 + bob) * p, 3 * p, 5 * p); // แถบขาวตรงกลาง
-
-  // ปากและจมูก
-  ctx.fillStyle = '#f5f6fa';
-  ctx.fillRect(-2 * p, (-2 + bob) * p, 5 * p, 3 * p);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(-0.5 * p, (-2 + bob) * p, 2 * p, 1 * p); // จมูกดำ
-
-  // ลิ้นสีชมพูห้อย
-  ctx.fillStyle = '#ff6b81';
-  ctx.fillRect(-0.5 * p, (0 + bob) * p, 2 * p, 1.5 * p);
-
-  // ตาพิกเซล
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(-3.5 * p, (-4 + bob) * p, 1.5 * p, 1.5 * p);
-  ctx.fillRect(3 * p, (-4 + bob) * p, 1.5 * p, 1.5 * p);
-
-  ctx.restore();
-}
-
-// วาดกองอึ (Pixel Style)
-function drawPoop(p) {
-  ctx.save();
-  ctx.translate(Math.round(p.x), Math.round(p.y));
-  const s = 3;
-  ctx.fillStyle = '#5c2d0c';
-  ctx.fillRect(-5 * s, 0, 10 * s, 4 * s);
-  ctx.fillStyle = '#7a3e10';
-  ctx.fillRect(-3.5 * s, -3 * s, 7 * s, 3 * s);
-  ctx.fillStyle = '#944d14';
-  ctx.fillRect(-1.5 * s, -5 * s, 3 * s, 2 * s);
-  // ไฮไลท์
-  ctx.fillStyle = '#b56523';
-  ctx.fillRect(-2 * s, -2 * s, 1.5 * s, 1.5 * s);
-  ctx.restore();
-}
-
-// วาดกระดูก (ธรรมดา vs กระดูกทองคำ)
-function drawBone(b) {
-  ctx.save();
-  ctx.translate(Math.round(b.x), Math.round(b.y));
-
-  const isGold = b.isGold;
-  const baseColor = isGold ? '#ffd700' : '#f5f6fa';
-  const strokeColor = isGold ? '#b8860b' : '#2f3640';
-
-  // ประกายแสงวิบวับรอบกระดูกทอง
-  if (isGold) {
-    const glow = (Math.sin(frameCount * 0.2) + 1) * 3;
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
-    ctx.lineWidth = glow;
-    ctx.strokeRect(-12, -4, 24, 8);
-  }
-
-  ctx.fillStyle = baseColor;
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 2;
-
-  ctx.fillRect(-11, -4, 22, 8);
-  ctx.strokeRect(-11, -4, 22, 8);
-
-  [-11, 11].forEach(ox => {
-    [-4, 4].forEach(oy => {
+    function drawSidewalk(offset) {
+      // Base sidewalk pavement
       ctx.beginPath();
-      ctx.arc(ox, oy, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = baseColor;
+      ctx.moveTo(ROAD_CENTER_X - ROAD_TOP_W / 2, HORIZON_Y);
+      ctx.lineTo(ROAD_CENTER_X + ROAD_TOP_W / 2, HORIZON_Y);
+      ctx.lineTo(ROAD_CENTER_X + ROAD_BOTTOM_W / 2, canvas.height);
+      ctx.lineTo(ROAD_CENTER_X - ROAD_BOTTOM_W / 2, canvas.height);
+      ctx.closePath();
+      ctx.fillStyle = "#d2c7d9";
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "#40314f";
+      ctx.stroke();
+
+      // Sidewalk Grid Lines (Horizontal moving lines)
+      ctx.strokeStyle = "#9c8fa3";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        let currentZ = ((i / 8) + (offset % (1 / 8)));
+        if (currentZ > 0 && currentZ <= 1.0) {
+          let p1 = getPerspectivePos(-1, currentZ);
+          let p2 = getPerspectivePos(1, currentZ);
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+
+      // Vertical sidewalk line down the middle
+      let midTop = getPerspectivePos(0, 0);
+      let midBot = getPerspectivePos(0, 1);
+      ctx.beginPath();
+      ctx.moveTo(midTop.x, midTop.y);
+      ctx.lineTo(midBot.x, midBot.y);
+      ctx.stroke();
+    }
+
+    function drawDog(p) {
+      const { x, y, scale } = getPerspectivePos(p.laneX, p.z);
+      const w = p.size * scale;
+      const h = (p.size * 0.9) * scale;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Dog Body (White & Black patches)
+      ctx.fillStyle = "#f5f5f5";
+      ctx.beginPath();
+      ctx.ellipse(0, -h * 0.35, w * 0.45, h * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Paws
+      ctx.fillStyle = "#fce0db";
+      ctx.fillRect(-w * 0.45, -h * 0.08, w * 0.22, h * 0.16);
+      ctx.fillRect(w * 0.23, -h * 0.08, w * 0.22, h * 0.16);
+
+      // Black patch over eyes
+      ctx.fillStyle = "#2c2d30";
+      ctx.beginPath();
+      ctx.ellipse(-w * 0.15, -h * 0.52, w * 0.26, h * 0.3, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ears (Frenchie bat-ears)
+      ctx.fillStyle = "#f492a5";
+      ctx.beginPath();
+      ctx.ellipse(-w * 0.3, -h * 0.85, w * 0.14, h * 0.25, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(w * 0.3, -h * 0.85, w * 0.14, h * 0.25, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#2c2d30";
+      ctx.lineWidth = 3 * scale;
+      ctx.stroke();
+
+      // Tongue / Smile
+      ctx.fillStyle = "#ff4f6a";
+      ctx.beginPath();
+      ctx.arc(0, -h * 0.22, w * 0.12, 0, Math.PI);
+      ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(-w * 0.14, -h * 0.5, w * 0.08, 0, Math.PI * 2);
+      ctx.arc(w * 0.14, -h * 0.5, w * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.arc(-w * 0.14, -h * 0.5, w * 0.04, 0, Math.PI * 2);
+      ctx.arc(w * 0.14, -h * 0.5, w * 0.04, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawPoop(obs) {
+      const { x, y, scale } = getPerspectivePos(obs.laneX, obs.z);
+      const s = (obs.type === "big" ? 40 : 26) * scale;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Poop Swirls
+      ctx.fillStyle = "#7b4317";
+      ctx.strokeStyle = "#381902";
+      ctx.lineWidth = 2 * scale;
+
+      // Base coil
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.7, s * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    });
-  });
 
-  ctx.restore();
-}
+      // Mid coil
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.25, s * 0.48, s * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
-// วาด UI แบบ Retro Pixel Box ด้านบน
-function drawUI() {
-  // Score Box ซ้ายบน
-  ctx.fillStyle = '#686e77';
-  ctx.fillRect(16, 16, 126, 52);
-  ctx.strokeStyle = '#181a1d';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(16, 16, 126, 52);
+      // Top tip
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.5, s * 0.22, s * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
-  ctx.fillStyle = '#111315';
-  ctx.font = 'bold 11px Courier New';
-  ctx.fillText('SCORE:', 24, 34);
-  ctx.font = 'bold 19px Courier New';
-  ctx.fillText(String(Math.floor(score)).padStart(5, '0'), 24, 56);
-
-  // Level Box ขวาบน
-  ctx.fillStyle = '#686e77';
-  ctx.fillRect(canvas.width - 142, 16, 126, 52);
-  ctx.strokeRect(canvas.width - 142, 16, 126, 52);
-
-  ctx.fillStyle = '#111315';
-  ctx.font = 'bold 11px Courier New';
-  ctx.fillText('LEVEL:', canvas.width - 134, 34);
-  ctx.font = 'bold 19px Courier New';
-  ctx.fillText(`LVL ${level}`, canvas.width - 134, 56);
-
-  // หน้าปัด Speedometer กลมสีดำ
-  const gx = canvas.width - 48;
-  const gy = 110;
-  ctx.beginPath();
-  ctx.arc(gx, gy, 24, 0, Math.PI * 2);
-  ctx.fillStyle = '#16181b';
-  ctx.fill();
-  ctx.strokeStyle = '#5a626d';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // เข็มวัดสีแดง
-  const ratio = (speed - INITIAL_SPEED) / (MAX_SPEED - INITIAL_SPEED);
-  const angle = -Math.PI * 0.75 + Math.min(Math.max(ratio, 0), 1) * Math.PI * 1.5;
-  ctx.beginPath();
-  ctx.moveTo(gx, gy);
-  ctx.lineTo(gx + Math.cos(angle) * 18, gy + Math.sin(angle) * 18);
-  ctx.strokeStyle = '#e74c3c';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-}
-
-function update() {
-  if (state === 'PLAY') {
-    frameCount++;
-    score += speed * 0.032;
-
-    // ค่อยๆ ไต่ระดับความเร็ว
-    speed = Math.min(MAX_SPEED, INITIAL_SPEED + (score / 480) * 0.55);
-    level = 1 + Math.floor(score / 400);
-
-    // เม็ดฝุ่นวิ่ง
-    if (frameCount % 6 === 0) {
-      particles.push({
-        x: dog.x + (Math.random() * 16 - 8),
-        y: dog.y + 24,
-        r: 2 + Math.random() * 2,
-        alpha: 0.8
-      });
+      ctx.restore();
     }
 
-    if (dog.moveLeft && dog.x > 54) dog.x -= dog.speed;
-    if (dog.moveRight && dog.x < canvas.width - 54) dog.x += dog.speed;
+    function drawUI() {
+      // Score Box
+      ctx.fillStyle = "#000";
+      ctx.font = "12px 'Press Start 2P'";
+      ctx.fillText(`SCORE:`, 24, 38);
+      ctx.font = "18px 'Press Start 2P'";
+      ctx.fillText(String(Math.floor(score)).padStart(5, '0'), 24, 62);
 
-    // กองอึ
-    poopSpawnTimer++;
-    const poopInterval = Math.max(38, Math.floor(95 - (speed - INITIAL_SPEED) * 5.5));
-    if (poopSpawnTimer >= poopInterval) {
-      poopSpawnTimer = 0;
-      poops.push({
-        x: 60 + Math.random() * (canvas.width - 120),
-        y: -30,
-        w: 30,
-        h: 20
-      });
+      // Level Box
+      ctx.font = "12px 'Press Start 2P'";
+      ctx.fillText(`LEVEL: ${level}`, 320, 38);
+
+      // Title banner
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffcc00";
+      ctx.font = "14px 'Press Start 2P'";
+      ctx.shadowColor = "#000";
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      ctx.fillText("PAW PATROL", canvas.width / 2, 35);
+      ctx.fillText("PONTIFICATOR", canvas.width / 2, 55);
+      ctx.fillStyle = "#fff";
+      ctx.font = "8px 'Press Start 2P'";
+      ctx.fillText("AVOID THE LANDMINES!", canvas.width / 2, 75);
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.textAlign = "start";
     }
 
-    // สุ่มกระดูก (มีโอกาส 25% ที่จะเป็นกระดูกทองคำ +100)
-    boneSpawnTimer++;
-    if (boneSpawnTimer >= 150) {
-      boneSpawnTimer = 0;
-      const isGold = Math.random() < 0.28;
-      bones.push({
-        x: 65 + Math.random() * (canvas.width - 130),
-        y: -30,
-        isGold: isGold
-      });
-    }
+    let roadOffset = 0;
 
-    // เช็คกระดูก
-    for (let i = bones.length - 1; i >= 0; i--) {
-      const b = bones[i];
-      b.y += speed;
+    function update() {
+      if (isGameOver) return;
 
-      if (Math.hypot(dog.x - b.x, dog.y - b.y) < 30) {
-        if (b.isGold) {
-          score += 100;
-          playSound('gold_bone');
-          floatingTexts.push({ x: b.x, y: b.y, text: '+100 GOLD!', color: '#ffd700', alpha: 1 });
-        } else {
-          score += 50;
-          playSound('bone');
-          floatingTexts.push({ x: b.x, y: b.y, text: '+50', color: '#ffffff', alpha: 1 });
+      // Progression & Difficulty
+      roadOffset = (roadOffset + speed) % 1.0;
+      score += speed * 150;
+      level = 1 + Math.floor(score / 500);
+      speed = 0.006 + (level * 0.0014);
+
+      // Controls
+      if (keys["ArrowLeft"] || keys["a"]) player.laneX -= 0.045;
+      if (keys["ArrowRight"] || keys["d"]) player.laneX += 0.045;
+      player.laneX = Math.max(-0.85, Math.min(0.85, player.laneX));
+
+      // Spawning
+      spawnTimer++;
+      const spawnInterval = Math.max(25, 75 - level * 5);
+      if (spawnTimer >= spawnInterval) {
+        spawnPoop();
+        spawnTimer = 0;
+      }
+
+      // Update Obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.z += speed;
+
+        // Collision Check (when poop is near player depth)
+        if (obs.z > 0.82 && obs.z < 0.98) {
+          const hitRadius = obs.type === "big" ? 0.25 : 0.16;
+          if (Math.abs(obs.laneX - player.laneX) < hitRadius) {
+            triggerGameOver();
+          }
         }
-        bones.splice(i, 1);
-        continue;
+
+        // Cleanup off-screen
+        if (obs.z > 1.05) {
+          obstacles.splice(i, 1);
+        }
       }
-      if (b.y > canvas.height + 40) bones.splice(i, 1);
     }
 
-    // เช็คกองอึ
-    for (let i = poops.length - 1; i >= 0; i--) {
-      const p = poops[i];
-      p.y += speed;
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (Math.hypot(dog.x - p.x, (dog.y - 6) - p.y) < 24) {
-        playSound('crash');
-        shakeTime = 16;
-        state = 'GAMEOVER';
-      }
-      if (p.y > canvas.height + 40) poops.splice(i, 1);
+      drawSkyAndCity();
+      drawSidewalk(roadOffset);
+
+      // Sort & Draw obstacles
+      obstacles.sort((a, b) => a.z - b.z);
+      obstacles.forEach(drawPoop);
+
+      // Draw Dog Player
+      drawDog(player);
+
+      // Draw Top HUD
+      drawUI();
     }
-  }
 
-  // ฝุ่นจางลง
-  for (let i = particles.length - 1; i >= 0; i--) {
-    particles[i].y += speed * 0.3;
-    particles[i].alpha -= 0.04;
-    if (particles[i].alpha <= 0) particles.splice(i, 1);
-  }
+    function gameLoop() {
+      update();
+      render();
+      if (!isGameOver) requestAnimationFrame(gameLoop);
+    }
 
-  // ข้อความลอย
-  for (let i = floatingTexts.length - 1; i >= 0; i--) {
-    floatingTexts[i].y -= 1.3;
-    floatingTexts[i].alpha -= 0.025;
-    if (floatingTexts[i].alpha <= 0) floatingTexts.splice(i, 1);
-  }
+    function triggerGameOver() {
+      isGameOver = true;
+      finalScoreEl.innerText = `SCORE: ${Math.floor(score)}`;
+      finalLevelEl.innerText = `LEVEL: ${level}`;
+      gameOverScreen.style.display = "flex";
+    }
 
-  if (shakeTime > 0) shakeTime--;
-}
+    function resetGame() {
+      score = 0;
+      level = 1;
+      speed = 0.006;
+      obstacles = [];
+      player.laneX = 0;
+      isGameOver = false;
+      gameOverScreen.style.display = "none";
+      requestAnimationFrame(gameLoop);
+    }
 
-function draw() {
-  ctx.save();
-  if (shakeTime > 0) {
-    ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
-  }
+    restartBtn.addEventListener("click", resetGame);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawEnvironment();
-
-  particles.forEach(pt => {
-    ctx.fillStyle = `rgba(180, 190, 200, ${pt.alpha})`;
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  bones.forEach(b => drawBone(b));
-  poops.forEach(p => drawPoop(p));
-  drawPixelFrenchie(dog.x, dog.y, frameCount);
-
-  floatingTexts.forEach(ft => {
-    ctx.fillStyle = ft.color || '#fff';
-    ctx.globalAlpha = Math.max(0, ft.alpha);
-    ctx.font = 'bold 18px Courier New';
-    ctx.fillText(ft.text, ft.x - 25, ft.y);
-    ctx.globalAlpha = 1;
-  });
-
-  drawUI();
-
-  // จอ Game Over ตรงเป๊ะตามในภาพ
-  if (state === 'GAMEOVER') {
-    ctx.fillStyle = 'rgba(25, 28, 33, 0.75)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#ffbb00';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 30px Courier New';
-    ctx.fillText('GAME OVER!', canvas.width / 2, 310);
-
-    ctx.fillStyle = '#e0e0e0';
-    ctx.font = '16px Courier New';
-    ctx.fillText(`Final Score: ${Math.floor(score)}`, canvas.width / 2, 360);
-    ctx.fillText('Tap Screen or Press SPACE', canvas.width / 2, 405);
-    ctx.textAlign = 'start';
-  }
-  ctx.restore();
-}
-
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-function resetGame() {
-  initAudio();
-  playSound('bark');
-  score = 0;
-  level = 1;
-  speed = INITIAL_SPEED;
-  dog.x = 200;
-  poops.length = 0;
-  bones.length = 0;
-  state = 'PLAY';
-}
-
-window.addEventListener('keydown', (e) => {
-  initAudio();
-  if (e.code === 'ArrowLeft' || e.code === 'KeyA') dog.moveLeft = true;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') dog.moveRight = true;
-  if (e.code === 'Space' && state === 'GAMEOVER') resetGame();
-});
-
-window.addEventListener('keyup', (e) => {
-  if (e.code === 'ArrowLeft' || e.code === 'KeyA') dog.moveLeft = false;
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') dog.moveRight = false;
-});
-
-const leftBtn = document.getElementById('btn-left');
-const rightBtn = document.getElementById('btn-right');
-
-['pointerdown', 'touchstart'].forEach(evt => {
-  leftBtn.addEventListener(evt, (e) => { e.preventDefault(); initAudio(); dog.moveLeft = true; });
-  rightBtn.addEventListener(evt, (e) => { e.preventDefault(); initAudio(); dog.moveRight = true; });
-});
-
-['pointerup', 'touchend', 'pointercancel'].forEach(evt => {
-  leftBtn.addEventListener(evt, () => dog.moveLeft = false);
-  rightBtn.addEventListener(evt, () => dog.moveRight = false);
-});
-
-canvas.addEventListener('click', () => {
-  initAudio();
-  if (state === 'GAMEOVER') resetGame();
-});
-
-loop();
-</script>
+    // Initial Start
+    requestAnimationFrame(gameLoop);
+  </script>
 </body>
 </html>
-
