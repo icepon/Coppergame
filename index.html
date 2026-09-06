@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Paw Patrol Pontificator</title>
+  <title>Paw Patrol Pontificator 3D</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -16,7 +18,7 @@
       -webkit-user-select: none;
     }
     body {
-      background: #182026;
+      background: #10151c;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -26,23 +28,57 @@
     }
     #game-container {
       position: relative;
-      width: 440px;
-      height: 640px;
+      width: 480px;
+      height: 680px;
       max-width: 100vw;
       max-height: 100vh;
       background: #000;
-      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
+      box-shadow: 0 16px 45px rgba(0,0,0,0.85);
       overflow: hidden;
-      border: 4px solid #111;
+      border: 4px solid #1a222d;
       border-radius: 12px;
     }
-    canvas {
-      display: block;
+    #canvas3d {
       width: 100%;
       height: 100%;
-      image-rendering: pixelated;
+      display: block;
     }
-    /* Controls */
+    /* Retro HUD Overlay */
+    .hud-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      text-shadow: 2px 2px 0 #000;
+      z-index: 5;
+    }
+    .hud-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hud-title {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: #ffcc00;
+      font-size: 11px;
+      line-height: 1.4;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .hud-title span {
+      display: block;
+      color: #fff;
+      font-size: 8px;
+      margin-top: 4px;
+    }
     .touch-controls {
       position: absolute;
       bottom: 24px;
@@ -52,20 +88,21 @@
       justify-content: space-between;
       padding: 0 24px;
       pointer-events: none;
+      z-index: 5;
     }
     .ctrl-btn {
       pointer-events: auto;
       background: #ffffff;
       border: 3px solid #111;
       border-radius: 8px;
-      width: 64px;
-      height: 52px;
+      width: 68px;
+      height: 54px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       box-shadow: 0 4px 0 #111;
-      font-size: 24px;
+      font-size: 26px;
       color: #111;
     }
     .ctrl-btn:active {
@@ -74,9 +111,9 @@
     }
     #gyro-btn {
       position: absolute;
-      top: 105px;
+      top: 90px;
       right: 16px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.65);
       border: 2px solid #ffcc00;
       color: #ffcc00;
       font-family: inherit;
@@ -84,13 +121,26 @@
       padding: 6px 8px;
       border-radius: 4px;
       cursor: pointer;
+      pointer-events: auto;
       z-index: 5;
     }
-    /* Game Over Modal */
+    .floating-text {
+      position: absolute;
+      font-size: 14px;
+      font-weight: bold;
+      pointer-events: none;
+      animation: floatUp 0.8s ease-out forwards;
+      text-shadow: 2px 2px 0 #000;
+      z-index: 6;
+    }
+    @keyframes floatUp {
+      0% { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(-45px) scale(1.25); opacity: 0; }
+    }
     #game-over-screen {
       position: absolute;
       inset: 0;
-      background: rgba(0,0,0,0.85);
+      background: rgba(0,0,0,0.88);
       display: none;
       flex-direction: column;
       align-items: center;
@@ -131,7 +181,25 @@
 <body>
 
   <div id="game-container">
-    <canvas id="gameCanvas" width="440" height="640"></canvas>
+    <div id="canvas3d"></div>
+
+    <div class="hud-overlay">
+      <div class="hud-left">
+        <div style="font-size: 9px; color: #bbb;">SCORE</div>
+        <div id="hud-score" style="font-size: 16px;">00000</div>
+        <div id="hud-bones" style="font-size: 10px; color: #ffcc00;">🦴 0</div>
+      </div>
+      <div style="text-align: right;">
+        <div id="hud-level" style="font-size: 11px;">LVL: 1</div>
+        <div id="hud-speed" style="font-size: 8px; color: #00ff66; margin-top: 6px;">SPD: 60</div>
+      </div>
+    </div>
+
+    <div class="hud-title">
+      PAW PATROL<br>PONTIFICATOR 3D
+      <span>AVOID THE LANDMINES!</span>
+    </div>
+
     <button id="gyro-btn">ENABLE TILT 📳</button>
     
     <div class="touch-controls">
@@ -149,8 +217,12 @@
   </div>
 
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("game-container");
+    const canvasDiv = document.getElementById("canvas3d");
+    const hudScore = document.getElementById("hud-score");
+    const hudBones = document.getElementById("hud-bones");
+    const hudLevel = document.getElementById("hud-level");
+    const hudSpeed = document.getElementById("hud-speed");
     const gameOverScreen = document.getElementById("game-over-screen");
     const finalScoreEl = document.getElementById("final-score");
     const finalBonesEl = document.getElementById("final-bones");
@@ -158,34 +230,386 @@
     const restartBtn = document.getElementById("restart-btn");
     const gyroBtn = document.getElementById("gyro-btn");
 
-    // Perspective Config
-    const HORIZON_Y = 240; 
-    const ROAD_TOP_W = 120;
-    const ROAD_BOTTOM_W = 400;
-    const ROAD_CENTER_X = 220;
-
     let score = 0;
     let bonesCollected = 0;
     let level = 1;
-    let speed = 0.006;
+    let speed = 0.58;
     let isGameOver = false;
-    let tickCount = 0;
+    let tick = 0;
 
-    // Player State (ปรับขนาดให้กระทัดรัดน่ารัก ไม่บังเลน)
-    const player = {
-      x: 0,
-      targetX: 0,
-      vx: 0,
-      z: 0.88,
-      size: 68,
-      tiltAngle: 0
-    };
+    // Three.js Scene Setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x8fe1ec);
+    scene.fog = new THREE.Fog(0x8fe1ec, 45, 110);
 
-    let obstacles = [];
-    let floatingTexts = [];
-    let spawnTimer = 0;
+    const camera = new THREE.PerspectiveCamera(52, 480 / 680, 0.1, 160);
+    camera.position.set(0, 3.4, 5.8);
+    camera.lookAt(0, 1.2, -8);
 
-    // Smooth Control Variables
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(480, 680);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    canvasDiv.appendChild(renderer.domElement);
+
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      camera.aspect = rect.width / rect.height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(rect.width, rect.height);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfff3d6, 0.75);
+    dirLight.position.set(16, 25, 12);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
+    dirLight.shadow.camera.left = -20;
+    dirLight.shadow.camera.right = 20;
+    dirLight.shadow.camera.top = 25;
+    dirLight.shadow.camera.bottom = -20;
+    scene.add(dirLight);
+
+    // ----------------- WIDE ROAD & ENVIRONMENT -----------------
+    const ROAD_WIDTH = 9.2; // ขยายถนนให้กว้าง วิ่งได้อย่างสบาย
+    const ROAD_LENGTH = 150;
+
+    // Road Surface Texture with Center Dashed Line
+    const cvRoad = document.createElement('canvas');
+    cvRoad.width = 256; cvRoad.height = 256;
+    const ctxRoad = cvRoad.getContext('2d');
+    ctxRoad.fillStyle = '#40444c'; ctxRoad.fillRect(0, 0, 256, 256);
+    // Center yellow dashes
+    ctxRoad.fillStyle = '#ffcc00';
+    ctxRoad.fillRect(122, 20, 12, 80);
+    ctxRoad.fillRect(122, 150, 12, 80);
+    // White curb stripes on sides
+    ctxRoad.fillStyle = '#ffffff';
+    ctxRoad.fillRect(4, 0, 8, 256);
+    ctxRoad.fillRect(244, 0, 8, 256);
+
+    const roadTexture = new THREE.CanvasTexture(cvRoad);
+    roadTexture.wrapS = THREE.RepeatWrapping;
+    roadTexture.wrapT = THREE.RepeatWrapping;
+    roadTexture.repeat.set(1, 24);
+
+    const roadGeo = new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH);
+    const roadMat = new THREE.MeshLambertMaterial({ map: roadTexture });
+    const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+    roadMesh.rotation.x = -Math.PI / 2;
+    roadMesh.position.set(0, 0, -ROAD_LENGTH / 4);
+    roadMesh.receiveShadow = true;
+    scene.add(roadMesh);
+
+    // Left Brick Buildings
+    const leftBuildings = [];
+    for (let i = 0; i < 18; i++) {
+      const bHeight = 8 + Math.random() * 7;
+      const bGeo = new THREE.BoxGeometry(5, bHeight, 7.5);
+      const bMat = new THREE.MeshLambertMaterial({ color: (i % 2 === 0) ? 0xcc6f49 : 0xb95935 });
+      const bMesh = new THREE.Mesh(bGeo, bMat);
+      bMesh.position.set(-ROAD_WIDTH/2 - 2.8, bHeight/2, -i * 8.5);
+      bMesh.castShadow = true;
+      scene.add(bMesh);
+      leftBuildings.push(bMesh);
+    }
+
+    // Right Side Trees (ต้นไม้เลื่อนผ่านด้านขวา)
+    const rightSideScenery = [];
+    const treeTrunkMat = new THREE.MeshLambertMaterial({ color: 0x6e4321 });
+    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x3d9e43 });
+    const foliageLightMat = new THREE.MeshLambertMaterial({ color: 0x58bf5e });
+
+    function createTree() {
+      const tree = new THREE.Group();
+      // Trunk
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.8, 7), treeTrunkMat);
+      trunk.position.y = 0.9;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      // Leaves lower
+      const btmLeaves = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.8, 7), foliageMat);
+      btmLeaves.position.y = 2.2;
+      btmLeaves.castShadow = true;
+      tree.add(btmLeaves);
+
+      // Leaves top
+      const topLeaves = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.4, 7), foliageLightMat);
+      topLeaves.position.y = 3.0;
+      topLeaves.castShadow = true;
+      tree.add(topLeaves);
+
+      return tree;
+    }
+
+    // Spawn row of trees along the right sidewalk
+    for (let i = 0; i < 18; i++) {
+      const tree = createTree();
+      tree.position.set(ROAD_WIDTH/2 + 1.6 + Math.random() * 0.8, 0, -i * 8);
+      scene.add(tree);
+      rightSideScenery.push(tree);
+    }
+
+    // ----------------- 3D DOG WITH NUMBER '8' ON BACK -----------------
+    const dogGroup = new THREE.Group();
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const blackMat = new THREE.MeshLambertMaterial({ color: 0x222226 });
+    const pinkMat  = new THREE.MeshLambertMaterial({ color: 0xff8fa2 });
+    const darkNose = new THREE.MeshLambertMaterial({ color: 0x141416 });
+
+    // Body
+    const bodyGeo = new THREE.BoxGeometry(0.88, 0.72, 1.25);
+    const bodyMesh = new THREE.Mesh(bodyGeo, whiteMat);
+    bodyMesh.position.set(0, 0.65, 0);
+    bodyMesh.castShadow = true;
+    dogGroup.add(bodyMesh);
+
+    // ลายเลข "8" ถมดำสนิทบนหลัง (Black Number 8 Marking)
+    const eightGroup = new THREE.Group();
+    eightGroup.position.set(0, 1.02, -0.05); // วางแนบหลังหมา
+
+    // ห่วงบนของเลข 8
+    const topCircle = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.05, 14), blackMat);
+    topCircle.position.set(0, 0, -0.19);
+    eightGroup.add(topCircle);
+
+    // ห่วงล่างของเลข 8 (ใหญ่กว่าเล็กน้อย)
+    const btmCircle = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.05, 14), blackMat);
+    btmCircle.position.set(0, 0, 0.17);
+    eightGroup.add(btmCircle);
+
+    // รูเจาะตรงกลางห่วงบน (สีขาว)
+    const topHole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12), whiteMat);
+    topHole.position.set(0, 0.005, -0.19);
+    eightGroup.add(topHole);
+
+    // รูเจาะตรงกลางห่วงล่าง (สีขาว)
+    const btmHole = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.06, 12), whiteMat);
+    btmHole.position.set(0, 0.005, 0.17);
+    eightGroup.add(btmHole);
+
+    dogGroup.add(eightGroup);
+
+    // Little white stub tail
+    const tailMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.18), whiteMat);
+    tailMesh.position.set(0, 0.85, 0.68);
+    tailMesh.rotation.x = 0.35;
+    dogGroup.add(tailMesh);
+
+    // Head
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.02, -0.68);
+
+    const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.72), whiteMat);
+    headMesh.castShadow = true;
+    headGroup.add(headMesh);
+
+    // Eye masks
+    const maskGeo = new THREE.BoxGeometry(0.35, 0.58, 0.25);
+    const maskL = new THREE.Mesh(maskGeo, blackMat);
+    maskL.position.set(-0.25, 0.08, -0.27);
+    headGroup.add(maskL);
+
+    const maskR = new THREE.Mesh(maskGeo, blackMat);
+    maskR.position.set(0.25, 0.08, -0.27);
+    headGroup.add(maskR);
+
+    // Snout & Nose
+    const snoutMesh = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.32, 0.3), whiteMat);
+    snoutMesh.position.set(0, -0.14, -0.44);
+    headGroup.add(snoutMesh);
+
+    const noseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.1), darkNose);
+    noseMesh.position.set(0, 0.0, -0.56);
+    headGroup.add(noseMesh);
+
+    // Tongue
+    const tongueMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.22), pinkMat);
+    tongueMesh.position.set(0, -0.24, -0.46);
+    headGroup.add(tongueMesh);
+
+    // Eyes
+    const eyeGeo = new THREE.SphereGeometry(0.065, 8, 8);
+    const eyeL = new THREE.Mesh(eyeGeo, darkNose);
+    eyeL.position.set(-0.26, 0.1, -0.38);
+    const eyeR = new THREE.Mesh(eyeGeo, darkNose);
+    eyeR.position.set(0.26, 0.1, -0.38);
+    headGroup.add(eyeL);
+    headGroup.add(eyeR);
+
+    // Bat Ears
+    function createBatEar(isLeft) {
+      const earGroup = new THREE.Group();
+      const outer = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.54, 0.08), blackMat);
+      outer.castShadow = true;
+      earGroup.add(outer);
+
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.42, 0.04), pinkMat);
+      inner.position.z = -0.03;
+      earGroup.add(inner);
+
+      earGroup.position.set(isLeft ? -0.34 : 0.34, 0.56, 0);
+      earGroup.rotation.z = isLeft ? 0.16 : -0.16;
+      return earGroup;
+    }
+    headGroup.add(createBatEar(true));
+    headGroup.add(createBatEar(false));
+
+    dogGroup.add(headGroup);
+
+    // Legs
+    const legGeo = new THREE.BoxGeometry(0.22, 0.5, 0.22);
+    const legs = [];
+    const legOffsets = [
+      { x: -0.35, z: -0.42 },
+      { x: 0.35,  z: -0.42 },
+      { x: -0.36, z: 0.42 },
+      { x: 0.36,  z: 0.42 }
+    ];
+    legOffsets.forEach(pos => {
+      const leg = new THREE.Mesh(legGeo, whiteMat);
+      leg.position.set(pos.x, 0.25, pos.z);
+      leg.castShadow = true;
+      dogGroup.add(leg);
+      legs.push(leg);
+    });
+
+    scene.add(dogGroup);
+
+    // ----------------- REALISTIC 3D POOP & BONE CREATION -----------------
+    const obstacles = [];
+
+    // Poop with smooth curves & orbiting flies
+    function createSmoothPoop(isBig) {
+      const poopGroup = new THREE.Group();
+      const poopMat = new THREE.MeshLambertMaterial({ color: 0x5e300d });
+      const scale = isBig ? 1.35 : 0.95;
+
+      // Layer 1 - Wide base torus
+      const base = new THREE.Mesh(new THREE.TorusGeometry(0.42*scale, 0.22*scale, 10, 16), poopMat);
+      base.rotation.x = Math.PI / 2;
+      base.position.y = 0.16*scale;
+      base.castShadow = true;
+      poopGroup.add(base);
+
+      // Layer 2 - Middle coil
+      const mid = new THREE.Mesh(new THREE.TorusGeometry(0.26*scale, 0.18*scale, 10, 16), poopMat);
+      mid.rotation.x = Math.PI / 2;
+      mid.position.y = 0.36*scale;
+      mid.castShadow = true;
+      poopGroup.add(mid);
+
+      // Layer 3 - Swirl tip
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22*scale, 0.32*scale, 10), poopMat);
+      tip.position.y = 0.55*scale;
+      tip.rotation.z = 0.15;
+      tip.castShadow = true;
+      poopGroup.add(tip);
+
+      // ฝูงแมลงวันบินตอม (Flies buzzing around poop)
+      const flies = [];
+      const flyMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      const flyGeo = new THREE.SphereGeometry(0.045, 4, 4);
+
+      for (let i = 0; i < 3; i++) {
+        const fly = new THREE.Mesh(flyGeo, flyMat);
+        fly.userData = {
+          angle: (i / 3) * Math.PI * 2,
+          radius: 0.45 + Math.random() * 0.3,
+          speed: 0.1 + Math.random() * 0.08,
+          baseY: 0.6 + Math.random() * 0.4
+        };
+        poopGroup.add(fly);
+        flies.push(fly);
+      }
+
+      poopGroup.userData.flies = flies;
+      return poopGroup;
+    }
+
+    // High quality smooth 3D Bone
+    function createSmoothBone(isGold) {
+      const boneGroup = new THREE.Group();
+      const boneMat = new THREE.MeshStandardMaterial({
+        color: isGold ? 0xffc400 : 0xf4f4f4,
+        roughness: isGold ? 0.25 : 0.4,
+        metalness: isGold ? 0.75 : 0.1,
+        emissive: isGold ? 0x4a3200 : 0x000000
+      });
+
+      // Shaft
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.68, 12), boneMat);
+      shaft.rotation.z = Math.PI / 2;
+      shaft.castShadow = true;
+      boneGroup.add(shaft);
+
+      // 4 Knobs (Round smooth spheres)
+      const knobGeo = new THREE.SphereGeometry(0.12, 10, 10);
+      const ends = [
+        { x: -0.34, y: 0.1 }, { x: -0.34, y: -0.1 },
+        { x: 0.34, y: 0.1 },  { x: 0.34, y: -0.1 }
+      ];
+      ends.forEach(pt => {
+        const knob = new THREE.Mesh(knobGeo, boneMat);
+        knob.position.set(pt.x, pt.y, 0);
+        knob.castShadow = true;
+        boneGroup.add(knob);
+      });
+
+      boneGroup.position.y = 0.65;
+      return boneGroup;
+    }
+
+    function spawnEntity() {
+      // Spawn inside the wide road bounds
+      const laneX = (Math.random() * (ROAD_WIDTH - 2.2)) - (ROAD_WIDTH - 2.2)/2;
+      const isPoop = Math.random() < 0.62;
+
+      if (isPoop) {
+        const isBig = Math.random() > 0.8;
+        const mesh = createSmoothPoop(isBig);
+        mesh.position.set(laneX, 0, -ROAD_LENGTH / 2);
+        scene.add(mesh);
+        obstacles.push({
+          kind: 'poop',
+          isBig: isBig,
+          radius: isBig ? 0.8 : 0.6,
+          mesh: mesh
+        });
+      } else {
+        const isGold = Math.random() > 0.65;
+        const mesh = createSmoothBone(isGold);
+        mesh.position.set(laneX, 0.55, -ROAD_LENGTH / 2);
+        scene.add(mesh);
+        obstacles.push({
+          kind: 'bone',
+          isGold: isGold,
+          value: isGold ? 100 : 50,
+          radius: 0.65,
+          mesh: mesh
+        });
+      }
+    }
+
+    function showFloatingScore(text, color) {
+      const el = document.createElement('div');
+      el.className = 'floating-text';
+      el.innerText = text;
+      el.style.color = color;
+      el.style.left = `${container.clientWidth / 2 - 20}px`;
+      el.style.top = `${container.clientHeight / 2 + 50}px`;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 800);
+    }
+
+    // ----------------- CONTROLS -----------------
     const keys = { left: false, right: false };
     let gyroOffset = 0;
     let gyroActive = false;
@@ -199,7 +623,6 @@
       if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
     });
 
-    // Touch Buttons with continuous press
     const leftBtn = document.getElementById("btn-left");
     const rightBtn = document.getElementById("btn-right");
 
@@ -207,12 +630,10 @@
     window.addEventListener("pointerup", () => { keys.left = false; keys.right = false; });
     rightBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); keys.right = true; });
 
-    // Gyroscope Setup
     function handleOrientation(e) {
       if (e.gamma !== null) {
-        // gamma: ซ้ายลบ ขวาบวก (-45 ถึง 45 องศา)
         const tilt = Math.max(-30, Math.min(30, e.gamma));
-        gyroOffset = tilt / 30; // -1 ถึง 1
+        gyroOffset = tilt / 30;
         gyroActive = true;
       }
     }
@@ -233,420 +654,128 @@
       }
     });
 
-    function getPerspectivePos(normX, z) {
-      const y = HORIZON_Y + z * (canvas.height - HORIZON_Y);
-      const halfWidth = (ROAD_TOP_W + z * (ROAD_BOTTOM_W - ROAD_TOP_W)) / 2;
-      const x = ROAD_CENTER_X + normX * halfWidth;
-      const scale = 0.22 + z * 0.95;
-      return { x, y, scale };
-    }
+    const playerPhysics = {
+      x: 0,
+      vx: 0,
+      bound: (ROAD_WIDTH / 2) - 0.85
+    };
 
-    function spawnEntity() {
-      const laneX = (Math.random() * 1.5) - 0.75;
-      const rand = Math.random();
+    let spawnTimer = 0;
 
-      if (rand < 0.62) {
-        obstacles.push({
-          kind: 'poop',
-          laneX: laneX,
-          z: 0.0,
-          type: Math.random() > 0.82 ? "big" : "normal"
-        });
-      } else {
-        const isGold = Math.random() > 0.65;
-        obstacles.push({
-          kind: 'bone',
-          laneX: laneX,
-          z: 0.0,
-          boneType: isGold ? 'gold' : 'white',
-          value: isGold ? 100 : 50
-        });
-      }
-    }
-
-    function addScoreFloat(x, y, text, color) {
-      floatingTexts.push({ x, y, text, color, alpha: 1.0 });
-    }
-
-    // ----------------- RENDERING -----------------
-
-    function drawBackground() {
-      ctx.fillStyle = "#8fe1ec";
-      ctx.fillRect(0, 0, canvas.width, HORIZON_Y);
-
-      // Distant buildings
-      ctx.fillStyle = "#6fb8c8";
-      ctx.fillRect(180, 150, 45, 90);
-      ctx.fillRect(225, 120, 50, 120);
-      ctx.fillRect(275, 160, 40, 80);
-
-      // Left building
-      ctx.fillStyle = "#e08c68";
-      ctx.fillRect(0, 60, 120, canvas.height);
-      ctx.fillStyle = "#ba6c4c";
-      ctx.fillRect(115, 60, 15, canvas.height);
-    }
-
-    function drawSidewalk(offset) {
-      ctx.beginPath();
-      ctx.moveTo(ROAD_CENTER_X - ROAD_TOP_W / 2, HORIZON_Y);
-      ctx.lineTo(ROAD_CENTER_X + ROAD_TOP_W / 2, HORIZON_Y);
-      ctx.lineTo(ROAD_CENTER_X + ROAD_BOTTOM_W / 2, canvas.height);
-      ctx.lineTo(ROAD_CENTER_X - ROAD_BOTTOM_W / 2, canvas.height);
-      ctx.closePath();
-      ctx.fillStyle = "#d4cad9";
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#40314f";
-      ctx.stroke();
-
-      ctx.strokeStyle = "#9d8ea4";
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 9; i++) {
-        let currentZ = ((i / 9) + (offset % (1 / 9)));
-        if (currentZ > 0 && currentZ <= 1.0) {
-          let p1 = getPerspectivePos(-1.0, currentZ);
-          let p2 = getPerspectivePos(1.0, currentZ);
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
-      }
-
-      let midTop = getPerspectivePos(0, 0);
-      let midBot = getPerspectivePos(0, 1);
-      ctx.beginPath();
-      ctx.moveTo(midTop.x, midTop.y);
-      ctx.lineTo(midBot.x, midBot.y);
-      ctx.stroke();
-    }
-
-    // วาดน้องหมา French Bulldog สัดส่วนน่ารัก ตรงตามภาพจริง
-    function drawDog(p) {
-      const { x, y, scale } = getPerspectivePos(p.x, p.z);
-      const s = p.size * scale;
-      const bounce = Math.sin(tickCount * 0.35) * (2.5 * scale);
-
-      ctx.save();
-      ctx.translate(x, y + bounce);
-      ctx.rotate(p.tiltAngle);
-
-      // เงา
-      ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
-      ctx.beginPath();
-      ctx.ellipse(0, s * 0.46, s * 0.45, s * 0.12, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ลำตัวสีขาว มีแต้มดำด้านหลังฝั่งขวาตามรูปจริง
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "#1a1a1a";
-      ctx.lineWidth = 2.5 * scale;
-      ctx.beginPath();
-      ctx.ellipse(0, s * 0.1, s * 0.34, s * 0.32, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // จุดแต้มสีดำบนหลัง
-      ctx.fillStyle = "#1d1d20";
-      ctx.beginPath();
-      ctx.ellipse(s * 0.18, s * 0.05, s * 0.16, s * 0.18, 0.3, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ขาหน้า 2 ข้าง
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(-s * 0.22, s * 0.36, s * 0.09, 0, Math.PI * 2);
-      ctx.arc(s * 0.22, s * 0.36, s * 0.09, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // --- หูทรงตั้งใหญ่ (Bat Ears) ดำล้วน ชมพูด้านใน ---
-      function drawBatEar(isLeft) {
-        ctx.save();
-        ctx.translate(isLeft ? -s * 0.28 : s * 0.28, -s * 0.34);
-        ctx.rotate(isLeft ? -0.18 : 0.18);
-        ctx.fillStyle = "#1e1e21";
-        ctx.beginPath();
-        ctx.ellipse(0, 0, s * 0.14, s * 0.26, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // ภายในหูชมพูอ่อน
-        ctx.fillStyle = "#f5a6b8";
-        ctx.beginPath();
-        ctx.ellipse(0, s * 0.03, s * 0.07, s * 0.17, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      drawBatEar(true);
-      drawBatEar(false);
-
-      // --- หัวหมา Frenchie ทรงกลมกระชับ ---
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(0, -s * 0.08, s * 0.38, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // มาร์กกิ้งสีดำ 2 ฝั่งรอบตา (Mask)
-      ctx.fillStyle = "#1f1f23";
-      // ซ้าย
-      ctx.beginPath();
-      ctx.ellipse(-s * 0.18, -s * 0.12, s * 0.18, s * 0.22, -0.1, 0, Math.PI * 2);
-      ctx.fill();
-      // ขวา
-      ctx.beginPath();
-      ctx.ellipse(s * 0.18, -s * 0.12, s * 0.18, s * 0.22, 0.1, 0, Math.PI * 2);
-      ctx.fill();
-
-      // แถบคาดสีขาวตรงกลางหน้าผาก (Blaze)
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.06, -s * 0.4);
-      ctx.lineTo(s * 0.06, -s * 0.4);
-      ctx.lineTo(s * 0.09, -s * 0.04);
-      ctx.lineTo(-s * 0.09, -s * 0.04);
-      ctx.closePath();
-      ctx.fill();
-
-      // ปากและแก้มขาวอวบ (Muzzle)
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s * 0.22, s * 0.14, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ตากลมโตสีดำเป็นประกายแบบรูปต้นฉบับ
-      ctx.fillStyle = "#0a0a0c";
-      ctx.beginPath();
-      ctx.arc(-s * 0.18, -s * 0.12, s * 0.07, 0, Math.PI * 2);
-      ctx.arc(s * 0.18, -s * 0.12, s * 0.07, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ประกายตา
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(-s * 0.20, -s * 0.14, s * 0.025, 0, Math.PI * 2);
-      ctx.arc(s * 0.16, -s * 0.14, s * 0.025, 0, Math.PI * 2);
-      ctx.fill();
-
-      // จมูกหมาร่นสีดำ
-      ctx.fillStyle = "#1a1a1d";
-      ctx.beginPath();
-      ctx.ellipse(0, -s * 0.02, s * 0.08, s * 0.05, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // รอยยิ้มเปิดปากเห็นฟันล่าง (เอกลักษณ์ตามรูป)
-      ctx.fillStyle = "#2c0e12";
-      ctx.beginPath();
-      ctx.arc(0, s * 0.06, s * 0.12, 0, Math.PI);
-      ctx.fill();
-
-      // ฟันล่างเล็กๆ น่ารัก
-      ctx.fillStyle = "#ffffff";
-      for (let f = -3; f <= 3; f += 2) {
-        ctx.fillRect(f * (s * 0.022) - (s * 0.01), s * 0.11, s * 0.02, s * 0.035);
-      }
-
-      ctx.restore();
-    }
-
-    function drawPoop(obs) {
-      const { x, y, scale } = getPerspectivePos(obs.laneX, obs.z);
-      const s = (obs.type === "big" ? 34 : 24) * scale;
-
-      ctx.save();
-      ctx.translate(x, y);
-
-      ctx.fillStyle = "#743a0e";
-      ctx.strokeStyle = "#381702";
-      ctx.lineWidth = 2 * scale;
-
-      // กองอึ 3 ชั้น
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s * 0.7, s * 0.3, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-
-      ctx.beginPath();
-      ctx.ellipse(0, -s * 0.25, s * 0.48, s * 0.22, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-
-      ctx.beginPath();
-      ctx.ellipse(0, -s * 0.5, s * 0.22, s * 0.16, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-
-      ctx.restore();
-    }
-
-    function drawBone(obs) {
-      const { x, y, scale } = getPerspectivePos(obs.laneX, obs.z);
-      const isGold = obs.boneType === 'gold';
-      const w = (isGold ? 30 : 24) * scale;
-      const h = (isGold ? 14 : 11) * scale;
-
-      ctx.save();
-      ctx.translate(x, y - 4 * scale);
-
-      if (isGold) {
-        ctx.shadowColor = "#ffe600";
-        ctx.shadowBlur = 10 * scale;
-      }
-
-      ctx.fillStyle = isGold ? "#ffcc00" : "#f5f5f5";
-      ctx.strokeStyle = isGold ? "#8a5800" : "#555";
-      ctx.lineWidth = 2 * scale;
-
-      ctx.fillRect(-w * 0.35, -h * 0.22, w * 0.7, h * 0.44);
-      ctx.strokeRect(-w * 0.35, -h * 0.22, w * 0.7, h * 0.44);
-
-      const r = h * 0.38;
-      const ends = [
-        [-w * 0.35, -h * 0.22],
-        [-w * 0.35, h * 0.22],
-        [w * 0.35, -h * 0.22],
-        [w * 0.35, h * 0.22]
-      ];
-      ends.forEach(([ex, ey]) => {
-        ctx.beginPath();
-        ctx.arc(ex, ey, r, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-      });
-
-      ctx.restore();
-    }
-
-    function drawFloatingTexts() {
-      for (let i = floatingTexts.length - 1; i >= 0; i--) {
-        const ft = floatingTexts[i];
-        ctx.save();
-        ctx.fillStyle = ft.color;
-        ctx.globalAlpha = ft.alpha;
-        ctx.font = "12px 'Press Start 2P'";
-        ctx.fillText(ft.text, ft.x - 16, ft.y);
-        ctx.restore();
-
-        ft.y -= 1.6;
-        ft.alpha -= 0.03;
-        if (ft.alpha <= 0) floatingTexts.splice(i, 1);
-      }
-    }
-
-    function drawUI() {
-      ctx.fillStyle = "#000";
-      ctx.font = "10px 'Press Start 2P'";
-      ctx.fillText(`SCORE`, 20, 32);
-      ctx.font = "15px 'Press Start 2P'";
-      ctx.fillText(String(Math.floor(score)).padStart(5, '0'), 20, 54);
-
-      ctx.font = "10px 'Press Start 2P'";
-      ctx.fillStyle = "#ffcc00";
-      ctx.fillText(`🦴 ${bonesCollected}`, 20, 76);
-
-      ctx.fillStyle = "#000";
-      ctx.font = "10px 'Press Start 2P'";
-      ctx.fillText(`LVL: ${level}`, 330, 32);
-
-      // Speed text indicator
-      ctx.font = "8px 'Press Start 2P'";
-      ctx.fillStyle = level > 3 ? "#ff3333" : "#00aa44";
-      ctx.fillText(`SPD: ${Math.round(speed * 1000)}`, 330, 52);
-
-      // Title
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#ffcc00";
-      ctx.font = "12px 'Press Start 2P'";
-      ctx.fillText("RUN", canvas.width / 2, 32);
-      ctx.font = "10px 'Press Start 2P'";
-      ctx.fillText("COPPER RUN", canvas.width / 2, 48);
-      ctx.textAlign = "start";
-    }
-
-    // ----------------- GAME LOOP & PHYSICS -----------------
-
-    let roadOffset = 0;
-
+    // ----------------- GAME LOOP -----------------
     function update() {
       if (isGameOver) return;
-      tickCount++;
+      tick++;
 
-      roadOffset = (roadOffset + speed) % 1.0;
-      score += speed * 120;
+      score += speed * 0.85;
       level = 1 + Math.floor(score / 450);
-      speed = 0.006 + (level * 0.0011);
+      speed = 0.58 + (level * 0.08);
 
-      // --- ระบบควบคุมแบบนุ่มนวล (Smooth Inertia & Gyro) ---
+      hudScore.innerText = String(Math.floor(score)).padStart(5, '0');
+      hudBones.innerText = `🦴 ${bonesCollected}`;
+      hudLevel.innerText = `LVL: ${level}`;
+      hudSpeed.innerText = `SPD: ${Math.round(speed * 100)}`;
+      hudSpeed.style.color = level > 3 ? '#ff3344' : '#00ff66';
+
+      // Move road texture
+      roadTexture.offset.y -= speed * 0.038;
+
+      // Move side trees (Right side)
+      rightSideScenery.forEach(tree => {
+        tree.position.z += speed;
+        if (tree.position.z > 12) {
+          tree.position.z -= ROAD_LENGTH;
+        }
+      });
+
+      // Move left buildings
+      leftBuildings.forEach(b => {
+        b.position.z += speed;
+        if (b.position.z > 12) {
+          b.position.z -= ROAD_LENGTH;
+        }
+      });
+
+      // Player Movement
       let moveDir = 0;
       if (keys.left) moveDir -= 1;
       if (keys.right) moveDir += 1;
+      if (gyroActive) moveDir += gyroOffset * 1.4;
 
-      // ผสานการเอียงจอ Gyro
-      if (gyroActive) {
-        moveDir += gyroOffset * 1.3;
-      }
+      playerPhysics.vx += moveDir * 0.048;
+      playerPhysics.vx *= 0.78;
+      playerPhysics.x += playerPhysics.vx;
 
-      // Physics acceleration & damping
-      const accel = 0.0055;
-      const friction = 0.82;
-      player.vx += moveDir * accel;
-      player.vx *= friction;
-      player.x += player.vx;
+      if (playerPhysics.x < -playerPhysics.bound) { playerPhysics.x = -playerPhysics.bound; playerPhysics.vx = 0; }
+      if (playerPhysics.x > playerPhysics.bound) { playerPhysics.x = playerPhysics.bound; playerPhysics.vx = 0; }
 
-      // บังคับขอบถนน
-      if (player.x < -0.82) { player.x = -0.82; player.vx = 0; }
-      if (player.x > 0.82) { player.x = 0.82; player.vx = 0; }
+      dogGroup.position.x = playerPhysics.x;
+      dogGroup.rotation.z = -playerPhysics.vx * 1.8;
+      dogGroup.rotation.y = -playerPhysics.vx * 1.2;
 
-      // เอียงตัวตามแรงเหวี่ยง
-      player.tiltAngle = player.vx * 3.8;
+      // Leg Run Animation
+      const runCycle = Math.sin(tick * 0.38);
+      legs[0].rotation.x = runCycle * 0.65;
+      legs[1].rotation.x = -runCycle * 0.65;
+      legs[2].rotation.x = -runCycle * 0.65;
+      legs[3].rotation.x = runCycle * 0.65;
+      dogGroup.position.y = Math.abs(runCycle) * 0.08;
 
-      // Spawner
+      // Camera Follow
+      camera.position.x += (playerPhysics.x * 0.45 - camera.position.x) * 0.12;
+
+      // Spawning
       spawnTimer++;
-      const spawnInterval = Math.max(22, 60 - level * 4);
-      if (spawnTimer >= spawnInterval) {
+      const interval = Math.max(16, 52 - level * 4);
+      if (spawnTimer >= interval) {
         spawnEntity();
         spawnTimer = 0;
       }
 
-      // Entity Updates & Collision
+      // Update Obstacles & Animate Flies/Bones
       for (let i = obstacles.length - 1; i >= 0; i--) {
         const ent = obstacles[i];
-        ent.z += speed;
+        ent.mesh.position.z += speed;
 
-        if (ent.z > 0.80 && ent.z < 0.94) {
-          const hitRadius = ent.kind === 'poop' ? (ent.type === 'big' ? 0.22 : 0.15) : 0.17;
-          if (Math.abs(ent.laneX - player.x) < hitRadius) {
+        if (ent.kind === 'poop' && ent.mesh.userData.flies) {
+          // แอนิเมชันแมลงวันบินวนรอบกองอึ
+          ent.mesh.userData.flies.forEach(fly => {
+            fly.userData.angle += fly.userData.speed;
+            fly.position.x = Math.cos(fly.userData.angle) * fly.userData.radius;
+            fly.position.z = Math.sin(fly.userData.angle) * fly.userData.radius;
+            fly.position.y = fly.userData.baseY + Math.sin(tick * 0.2 + fly.userData.angle) * 0.15;
+          });
+        } else if (ent.kind === 'bone') {
+          ent.mesh.rotation.y += 0.065;
+        }
+
+        // Collision Check (เมื่อถึงตำแหน่งใกล้กับตัวหมา Z ≈ 0)
+        if (Math.abs(ent.mesh.position.z) < 0.7) {
+          const dist = Math.abs(ent.mesh.position.x - dogGroup.position.x);
+          if (dist < ent.radius) {
             if (ent.kind === 'poop') {
               triggerGameOver();
               return;
             } else if (ent.kind === 'bone') {
               score += ent.value;
               bonesCollected++;
-              const pos = getPerspectivePos(ent.laneX, ent.z);
-              addScoreFloat(pos.x, pos.y, `+${ent.value}`, ent.boneType === 'gold' ? '#ffe033' : '#ffffff');
+              showFloatingScore(`+${ent.value}`, ent.isGold ? '#ffcc00' : '#ffffff');
+              scene.remove(ent.mesh);
               obstacles.splice(i, 1);
               continue;
             }
           }
         }
 
-        if (ent.z > 1.05) obstacles.splice(i, 1);
+        if (ent.mesh.position.z > 7) {
+          scene.remove(ent.mesh);
+          obstacles.splice(i, 1);
+        }
       }
     }
 
     function render() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      drawBackground();
-      drawSidewalk(roadOffset);
-
-      obstacles.sort((a, b) => a.z - b.z);
-      obstacles.forEach(ent => {
-        if (ent.kind === 'poop') drawPoop(ent);
-        else if (ent.kind === 'bone') drawBone(ent);
-      });
-
-      drawDog(player);
-      drawFloatingTexts();
-      drawUI();
+      renderer.render(scene, camera);
     }
 
     function gameLoop() {
@@ -667,11 +796,13 @@
       score = 0;
       bonesCollected = 0;
       level = 1;
-      speed = 0.006;
-      obstacles = [];
-      floatingTexts = [];
-      player.x = 0;
-      player.vx = 0;
+      speed = 0.58;
+      playerPhysics.x = 0;
+      playerPhysics.vx = 0;
+
+      obstacles.forEach(o => scene.remove(o.mesh));
+      obstacles.length = 0;
+
       isGameOver = false;
       gameOverScreen.style.display = "none";
       requestAnimationFrame(gameLoop);
