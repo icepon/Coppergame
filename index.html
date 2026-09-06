@@ -16,7 +16,7 @@
       -webkit-user-select: none;
     }
     body {
-      background: #1e2630;
+      background: #182026;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -26,14 +26,14 @@
     }
     #game-container {
       position: relative;
-      width: 480px;
+      width: 440px;
       height: 640px;
       max-width: 100vw;
       max-height: 100vh;
       background: #000;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
       overflow: hidden;
-      border: 4px solid #10161d;
+      border: 4px solid #111;
       border-radius: 12px;
     }
     canvas {
@@ -45,7 +45,7 @@
     /* Controls */
     .touch-controls {
       position: absolute;
-      bottom: 22px;
+      bottom: 24px;
       left: 0;
       width: 100%;
       display: flex;
@@ -56,22 +56,35 @@
     .ctrl-btn {
       pointer-events: auto;
       background: #ffffff;
-      border: 4px solid #111;
+      border: 3px solid #111;
       border-radius: 8px;
-      width: 66px;
-      height: 54px;
+      width: 64px;
+      height: 52px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      box-shadow: 0 5px 0 #111;
-      font-size: 26px;
+      box-shadow: 0 4px 0 #111;
+      font-size: 24px;
       color: #111;
-      transition: transform 0.05s, box-shadow 0.05s;
     }
     .ctrl-btn:active {
       transform: translateY(4px);
-      box-shadow: 0 1px 0 #111;
+      box-shadow: 0 0 0 #111;
+    }
+    #gyro-btn {
+      position: absolute;
+      top: 105px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 2px solid #ffcc00;
+      color: #ffcc00;
+      font-family: inherit;
+      font-size: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 5;
     }
     /* Game Over Modal */
     #game-over-screen {
@@ -88,23 +101,23 @@
     }
     #game-over-screen h1 {
       color: #ff3344;
-      font-size: 22px;
-      margin-bottom: 24px;
+      font-size: 20px;
+      margin-bottom: 20px;
       line-height: 1.4;
-      text-shadow: 3px 3px 0 #000;
+      text-shadow: 2px 2px 0 #000;
     }
     #game-over-screen p {
-      font-size: 13px;
+      font-size: 12px;
       margin-bottom: 12px;
       color: #eee;
     }
     #restart-btn {
-      margin-top: 24px;
+      margin-top: 20px;
       font-family: inherit;
       background: #ffcc00;
       border: 3px solid #000;
-      padding: 14px 28px;
-      font-size: 14px;
+      padding: 12px 24px;
+      font-size: 13px;
       cursor: pointer;
       border-radius: 6px;
       box-shadow: 0 4px 0 #000;
@@ -118,7 +131,8 @@
 <body>
 
   <div id="game-container">
-    <canvas id="gameCanvas" width="480" height="640"></canvas>
+    <canvas id="gameCanvas" width="440" height="640"></canvas>
+    <button id="gyro-btn">ENABLE TILT 📳</button>
     
     <div class="touch-controls">
       <button class="ctrl-btn" id="btn-left">◀</button>
@@ -142,65 +156,103 @@
     const finalBonesEl = document.getElementById("final-bones");
     const finalLevelEl = document.getElementById("final-level");
     const restartBtn = document.getElementById("restart-btn");
+    const gyroBtn = document.getElementById("gyro-btn");
 
-    // Perspective Projection Config
+    // Perspective Config
     const HORIZON_Y = 240; 
-    const ROAD_TOP_W = 140;
-    const ROAD_BOTTOM_W = 440;
-    const ROAD_CENTER_X = 240;
+    const ROAD_TOP_W = 120;
+    const ROAD_BOTTOM_W = 400;
+    const ROAD_CENTER_X = 220;
 
     let score = 0;
     let bonesCollected = 0;
     let level = 1;
-    let speed = 0.0065;
+    let speed = 0.006;
     let isGameOver = false;
     let tickCount = 0;
 
-    // Player State
+    // Player State (ปรับขนาดให้กระทัดรัดน่ารัก ไม่บังเลน)
     const player = {
-      laneX: 0,
-      z: 0.90,
-      size: 110 // ขนาดสเกลหมาใหญ่ชัดเจน
+      x: 0,
+      targetX: 0,
+      vx: 0,
+      z: 0.88,
+      size: 68,
+      tiltAngle: 0
     };
 
-    // Entities & Floating Texts
     let obstacles = [];
     let floatingTexts = [];
     let spawnTimer = 0;
 
-    // Input handlers
-    const keys = {};
-    window.addEventListener("keydown", (e) => { keys[e.key] = true; });
-    window.addEventListener("keyup", (e) => { keys[e.key] = false; });
+    // Smooth Control Variables
+    const keys = { left: false, right: false };
+    let gyroOffset = 0;
+    let gyroActive = false;
 
-    document.getElementById("btn-left").addEventListener("pointerdown", () => keys["ArrowLeft"] = true);
-    document.getElementById("btn-left").addEventListener("pointerup", () => keys["ArrowLeft"] = false);
-    document.getElementById("btn-right").addEventListener("pointerdown", () => keys["ArrowRight"] = true);
-    document.getElementById("btn-right").addEventListener("pointerup", () => keys["ArrowRight"] = false);
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+      if (e.key === "ArrowRight" || e.key === "d") keys.right = true;
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+      if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
+    });
+
+    // Touch Buttons with continuous press
+    const leftBtn = document.getElementById("btn-left");
+    const rightBtn = document.getElementById("btn-right");
+
+    leftBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); keys.left = true; });
+    window.addEventListener("pointerup", () => { keys.left = false; keys.right = false; });
+    rightBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); keys.right = true; });
+
+    // Gyroscope Setup
+    function handleOrientation(e) {
+      if (e.gamma !== null) {
+        // gamma: ซ้ายลบ ขวาบวก (-45 ถึง 45 องศา)
+        const tilt = Math.max(-30, Math.min(30, e.gamma));
+        gyroOffset = tilt / 30; // -1 ถึง 1
+        gyroActive = true;
+      }
+    }
+
+    gyroBtn.addEventListener("click", () => {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(state => {
+            if (state === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+              gyroBtn.style.display = "none";
+            }
+          })
+          .catch(console.error);
+      } else {
+        window.addEventListener('deviceorientation', handleOrientation);
+        gyroBtn.style.display = "none";
+      }
+    });
 
     function getPerspectivePos(normX, z) {
       const y = HORIZON_Y + z * (canvas.height - HORIZON_Y);
       const halfWidth = (ROAD_TOP_W + z * (ROAD_BOTTOM_W - ROAD_TOP_W)) / 2;
       const x = ROAD_CENTER_X + normX * halfWidth;
-      const scale = 0.2 + z * 0.95;
+      const scale = 0.22 + z * 0.95;
       return { x, y, scale };
     }
 
-    // Spawner (อึ หรือ กระดูก)
     function spawnEntity() {
       const laneX = (Math.random() * 1.5) - 0.75;
       const rand = Math.random();
 
-      if (rand < 0.60) {
-        // กองอึ
+      if (rand < 0.62) {
         obstacles.push({
           kind: 'poop',
           laneX: laneX,
           z: 0.0,
-          type: Math.random() > 0.8 ? "big" : "normal"
+          type: Math.random() > 0.82 ? "big" : "normal"
         });
       } else {
-        // กระดูก (ขาว +50 หรือ ทอง +100)
         const isGold = Math.random() > 0.65;
         obstacles.push({
           kind: 'bone',
@@ -216,58 +268,38 @@
       floatingTexts.push({ x, y, text, color, alpha: 1.0 });
     }
 
-    // ----------------- DRAWING METHODS -----------------
+    // ----------------- RENDERING -----------------
 
     function drawBackground() {
-      // Sky
       ctx.fillStyle = "#8fe1ec";
       ctx.fillRect(0, 0, canvas.width, HORIZON_Y);
 
-      // Distant City
-      ctx.fillStyle = "#6eb8c8";
-      ctx.fillRect(200, 150, 45, 90);
-      ctx.fillRect(240, 120, 55, 120);
-      ctx.fillRect(295, 160, 40, 80);
+      // Distant buildings
+      ctx.fillStyle = "#6fb8c8";
+      ctx.fillRect(180, 150, 45, 90);
+      ctx.fillRect(225, 120, 50, 120);
+      ctx.fillRect(275, 160, 40, 80);
 
-      // Left brick building
+      // Left building
       ctx.fillStyle = "#e08c68";
-      ctx.fillRect(0, 60, 135, canvas.height);
+      ctx.fillRect(0, 60, 120, canvas.height);
       ctx.fillStyle = "#ba6c4c";
-      ctx.fillRect(130, 60, 15, canvas.height);
-      
-      // Building details
-      ctx.fillStyle = "#692e15";
-      ctx.fillRect(80, 175, 35, 65);
-      ctx.fillStyle = "#98e3f5";
-      ctx.fillRect(20, 140, 30, 50);
-
-      // Sign: No Pooping
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(18, 230, 44, 52);
-      ctx.strokeStyle = "#c00";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(18, 230, 44, 52);
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.arc(40, 256, 14, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.fillRect(115, 60, 15, canvas.height);
     }
 
     function drawSidewalk(offset) {
-      // Sidewalk polygon
       ctx.beginPath();
       ctx.moveTo(ROAD_CENTER_X - ROAD_TOP_W / 2, HORIZON_Y);
       ctx.lineTo(ROAD_CENTER_X + ROAD_TOP_W / 2, HORIZON_Y);
       ctx.lineTo(ROAD_CENTER_X + ROAD_BOTTOM_W / 2, canvas.height);
       ctx.lineTo(ROAD_CENTER_X - ROAD_BOTTOM_W / 2, canvas.height);
       ctx.closePath();
-      ctx.fillStyle = "#d3c8d8";
+      ctx.fillStyle = "#d4cad9";
       ctx.fill();
       ctx.lineWidth = 3;
       ctx.strokeStyle = "#40314f";
       ctx.stroke();
 
-      // Horizontal Tiles
       ctx.strokeStyle = "#9d8ea4";
       ctx.lineWidth = 2;
       for (let i = 0; i < 9; i++) {
@@ -282,7 +314,6 @@
         }
       }
 
-      // Middle dividing line
       let midTop = getPerspectivePos(0, 0);
       let midBot = getPerspectivePos(0, 1);
       ctx.beginPath();
@@ -291,190 +322,183 @@
       ctx.stroke();
     }
 
-    // วาดสุนัข French Bulldog (Pied) ตรงตามต้นแบบ
+    // วาดน้องหมา French Bulldog สัดส่วนน่ารัก ตรงตามภาพจริง
     function drawDog(p) {
-      const { x, y, scale } = getPerspectivePos(p.laneX, p.z);
-      const w = p.size * scale;
-      const h = p.size * scale;
-      
-      // Animation เด้งดึ๋งเล็กน้อยขณะวิ่ง
-      const bounce = Math.sin(tickCount * 0.3) * (3 * scale);
+      const { x, y, scale } = getPerspectivePos(p.x, p.z);
+      const s = p.size * scale;
+      const bounce = Math.sin(tickCount * 0.35) * (2.5 * scale);
 
       ctx.save();
       ctx.translate(x, y + bounce);
+      ctx.rotate(p.tiltAngle);
 
-      // เงาใต้ตัวหมา
-      ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+      // เงา
+      ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
       ctx.beginPath();
-      ctx.ellipse(0, 8 * scale, w * 0.45, h * 0.15, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, s * 0.46, s * 0.45, s * 0.12, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // ลำตัวสีขาว (มีแต้มดำด้านหลัง)
-      ctx.fillStyle = "#2c2d33"; // แต้มดำหลัง
-      ctx.beginPath();
-      ctx.ellipse(-w * 0.22, -h * 0.28, w * 0.25, h * 0.26, 0.2, 0, Math.PI * 2);
-      ctx.fill();
-
+      // ลำตัวสีขาว มีแต้มดำด้านหลังฝั่งขวาตามรูปจริง
       ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "#1b1c1e";
-      ctx.lineWidth = 3.5 * scale;
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.ellipse(0, -h * 0.32, w * 0.42, h * 0.35, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, s * 0.1, s * 0.34, s * 0.32, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // ขาหน้า 2 ข้างพร้อมอุ้งเท้าสีชมพู
+      // จุดแต้มสีดำบนหลัง
+      ctx.fillStyle = "#1d1d20";
+      ctx.beginPath();
+      ctx.ellipse(s * 0.18, s * 0.05, s * 0.16, s * 0.18, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ขาหน้า 2 ข้าง
       ctx.fillStyle = "#ffffff";
-      // ขาซ้าย
       ctx.beginPath();
-      ctx.ellipse(-w * 0.26, -h * 0.08, w * 0.13, h * 0.16, 0.1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      // ขวา
-      ctx.beginPath();
-      ctx.ellipse(w * 0.26, -h * 0.08, w * 0.13, h * 0.16, -0.1, 0, Math.PI * 2);
+      ctx.arc(-s * 0.22, s * 0.36, s * 0.09, 0, Math.PI * 2);
+      ctx.arc(s * 0.22, s * 0.36, s * 0.09, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // เล็บ / ปลายอุ้งชมพูอ่อน
-      ctx.fillStyle = "#fbc8c8";
-      ctx.fillRect(-w * 0.34, -h * 0.02, w * 0.16, h * 0.05);
-      ctx.fillRect(w * 0.18, -h * 0.02, w * 0.16, h * 0.05);
-
-      // --- หูเฟรนช์ชี่ทรง Bat-Ears ตั้งตรง ---
-      function drawEar(isLeft) {
+      // --- หูทรงตั้งใหญ่ (Bat Ears) ดำล้วน ชมพูด้านใน ---
+      function drawBatEar(isLeft) {
         ctx.save();
-        ctx.translate(isLeft ? -w * 0.28 : w * 0.28, -h * 0.78);
-        ctx.rotate(isLeft ? -0.22 : 0.22);
-        // กรอบนอกหู
-        ctx.fillStyle = isLeft ? "#222326" : "#ffffff";
+        ctx.translate(isLeft ? -s * 0.28 : s * 0.28, -s * 0.34);
+        ctx.rotate(isLeft ? -0.18 : 0.18);
+        ctx.fillStyle = "#1e1e21";
         ctx.beginPath();
-        ctx.ellipse(0, 0, w * 0.16, h * 0.28, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, s * 0.14, s * 0.26, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        // ด้านในหูสีชมพู
-        ctx.fillStyle = "#f89db1";
+
+        // ภายในหูชมพูอ่อน
+        ctx.fillStyle = "#f5a6b8";
         ctx.beginPath();
-        ctx.ellipse(0, 2 * scale, w * 0.09, h * 0.19, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, s * 0.03, s * 0.07, s * 0.17, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
-      drawEar(true);
-      drawEar(false);
+      drawBatEar(true);
+      drawBatEar(false);
 
-      // --- หัวหมา French Bulldog ---
+      // --- หัวหมา Frenchie ทรงกลมกระชับ ---
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.ellipse(0, -h * 0.50, w * 0.44, h * 0.38, 0, 0, Math.PI * 2);
+      ctx.arc(0, -s * 0.08, s * 0.38, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // ปื้นดำคาดหน้าฝั่งซ้าย (Pied Pattern)
-      ctx.fillStyle = "#25272d";
+      // มาร์กกิ้งสีดำ 2 ฝั่งรอบตา (Mask)
+      ctx.fillStyle = "#1f1f23";
+      // ซ้าย
       ctx.beginPath();
-      ctx.ellipse(-w * 0.16, -h * 0.53, w * 0.24, h * 0.29, 0.15, 0, Math.PI * 2);
+      ctx.ellipse(-s * 0.18, -s * 0.12, s * 0.18, s * 0.22, -0.1, 0, Math.PI * 2);
+      ctx.fill();
+      // ขวา
+      ctx.beginPath();
+      ctx.ellipse(s * 0.18, -s * 0.12, s * 0.18, s * 0.22, 0.1, 0, Math.PI * 2);
       ctx.fill();
 
-      // แก้มกลมอวบสีขาวฝั่งขวา
+      // แถบคาดสีขาวตรงกลางหน้าผาก (Blaze)
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(w * 0.14, -h * 0.40, w * 0.16, 0, Math.PI * 2);
+      ctx.moveTo(-s * 0.06, -s * 0.4);
+      ctx.lineTo(s * 0.06, -s * 0.4);
+      ctx.lineTo(s * 0.09, -s * 0.04);
+      ctx.lineTo(-s * 0.09, -s * 0.04);
+      ctx.closePath();
       ctx.fill();
 
-      // ตาโตกลมดำ 2 ข้าง
-      ctx.fillStyle = "#111";
-      ctx.beginPath();
-      ctx.arc(-w * 0.16, -h * 0.52, w * 0.08, 0, Math.PI * 2);
-      ctx.arc(w * 0.16, -h * 0.52, w * 0.08, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ประกายตาสีขาว (Cute Eyes)
+      // ปากและแก้มขาวอวบ (Muzzle)
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(-w * 0.18, -h * 0.54, w * 0.03, 0, Math.PI * 2);
-      ctx.arc(w * 0.14, -h * 0.54, w * 0.03, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, s * 0.22, s * 0.14, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // จมูกหมาร่น สีดำ
-      ctx.fillStyle = "#1e1e20";
+      // ตากลมโตสีดำเป็นประกายแบบรูปต้นฉบับ
+      ctx.fillStyle = "#0a0a0c";
       ctx.beginPath();
-      ctx.ellipse(0, -h * 0.42, w * 0.09, h * 0.05, 0, 0, Math.PI * 2);
+      ctx.arc(-s * 0.18, -s * 0.12, s * 0.07, 0, Math.PI * 2);
+      ctx.arc(s * 0.18, -s * 0.12, s * 0.07, 0, Math.PI * 2);
       ctx.fill();
 
-      // ปากยิ้มกว้าง & ลิ้นชมพูแลบออกมา
-      ctx.fillStyle = "#2c0e14";
+      // ประกายตา
+      ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(0, -h * 0.35, w * 0.18, 0, Math.PI);
+      ctx.arc(-s * 0.20, -s * 0.14, s * 0.025, 0, Math.PI * 2);
+      ctx.arc(s * 0.16, -s * 0.14, s * 0.025, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
 
-      // ลิ้นสีชมพู
-      ctx.fillStyle = "#ff5577";
+      // จมูกหมาร่นสีดำ
+      ctx.fillStyle = "#1a1a1d";
       ctx.beginPath();
-      ctx.ellipse(0, -h * 0.31, w * 0.10, h * 0.08, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -s * 0.02, s * 0.08, s * 0.05, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      // รอยยิ้มเปิดปากเห็นฟันล่าง (เอกลักษณ์ตามรูป)
+      ctx.fillStyle = "#2c0e12";
+      ctx.beginPath();
+      ctx.arc(0, s * 0.06, s * 0.12, 0, Math.PI);
+      ctx.fill();
+
+      // ฟันล่างเล็กๆ น่ารัก
+      ctx.fillStyle = "#ffffff";
+      for (let f = -3; f <= 3; f += 2) {
+        ctx.fillRect(f * (s * 0.022) - (s * 0.01), s * 0.11, s * 0.02, s * 0.035);
+      }
 
       ctx.restore();
     }
 
-    // วาดกองอึ
     function drawPoop(obs) {
       const { x, y, scale } = getPerspectivePos(obs.laneX, obs.z);
-      const s = (obs.type === "big" ? 44 : 30) * scale;
+      const s = (obs.type === "big" ? 34 : 24) * scale;
 
       ctx.save();
       ctx.translate(x, y);
 
-      ctx.fillStyle = "#7b4114";
-      ctx.strokeStyle = "#381c06";
-      ctx.lineWidth = 2.5 * scale;
+      ctx.fillStyle = "#743a0e";
+      ctx.strokeStyle = "#381702";
+      ctx.lineWidth = 2 * scale;
 
-      // Base coil
+      // กองอึ 3 ชั้น
       ctx.beginPath();
-      ctx.ellipse(0, 0, s * 0.72, s * 0.32, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      ctx.ellipse(0, 0, s * 0.7, s * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
 
-      // Mid coil
       ctx.beginPath();
-      ctx.ellipse(0, -s * 0.28, s * 0.50, s * 0.23, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      ctx.ellipse(0, -s * 0.25, s * 0.48, s * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
 
-      // Top swirl
       ctx.beginPath();
-      ctx.ellipse(0, -s * 0.54, s * 0.24, s * 0.17, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      ctx.ellipse(0, -s * 0.5, s * 0.22, s * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
 
       ctx.restore();
     }
 
-    // วาดไอเทมกระดูก (Bone: ขาว หรือ ทอง)
     function drawBone(obs) {
       const { x, y, scale } = getPerspectivePos(obs.laneX, obs.z);
       const isGold = obs.boneType === 'gold';
-      const w = (isGold ? 36 : 28) * scale;
-      const h = (isGold ? 16 : 13) * scale;
+      const w = (isGold ? 30 : 24) * scale;
+      const h = (isGold ? 14 : 11) * scale;
 
       ctx.save();
-      ctx.translate(x, y - 6 * scale);
+      ctx.translate(x, y - 4 * scale);
 
-      // เอฟเฟกต์ประกายสีทอง
       if (isGold) {
-        ctx.shadowColor = "#ffea00";
-        ctx.shadowBlur = 12 * scale;
+        ctx.shadowColor = "#ffe600";
+        ctx.shadowBlur = 10 * scale;
       }
 
-      ctx.fillStyle = isGold ? "#ffe033" : "#f4f4f4";
-      ctx.strokeStyle = isGold ? "#965b00" : "#555555";
-      ctx.lineWidth = 2.5 * scale;
+      ctx.fillStyle = isGold ? "#ffcc00" : "#f5f5f5";
+      ctx.strokeStyle = isGold ? "#8a5800" : "#555";
+      ctx.lineWidth = 2 * scale;
 
-      // แท่งกลางกระดูก
       ctx.fillRect(-w * 0.35, -h * 0.22, w * 0.7, h * 0.44);
       ctx.strokeRect(-w * 0.35, -h * 0.22, w * 0.7, h * 0.44);
 
-      // ปลายกระดูก 4 วงกลม (ซ้ายบน-ล่าง ขวาบน-ล่าง)
       const r = h * 0.38;
       const ends = [
         [-w * 0.35, -h * 0.22],
@@ -482,71 +506,62 @@
         [w * 0.35, -h * 0.22],
         [w * 0.35, h * 0.22]
       ];
-
       ends.forEach(([ex, ey]) => {
         ctx.beginPath();
         ctx.arc(ex, ey, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        ctx.fill(); ctx.stroke();
       });
 
       ctx.restore();
     }
 
-    // ข้อความคะแนนลอยขึ้น
     function drawFloatingTexts() {
       for (let i = floatingTexts.length - 1; i >= 0; i--) {
         const ft = floatingTexts[i];
         ctx.save();
         ctx.fillStyle = ft.color;
         ctx.globalAlpha = ft.alpha;
-        ctx.font = "14px 'Press Start 2P'";
-        ctx.fillText(ft.text, ft.x - 20, ft.y);
+        ctx.font = "12px 'Press Start 2P'";
+        ctx.fillText(ft.text, ft.x - 16, ft.y);
         ctx.restore();
 
-        ft.y -= 1.8;
-        ft.alpha -= 0.025;
+        ft.y -= 1.6;
+        ft.alpha -= 0.03;
         if (ft.alpha <= 0) floatingTexts.splice(i, 1);
       }
     }
 
-    // UI ด้านบน
     function drawUI() {
-      // กล่องคะแนน
       ctx.fillStyle = "#000";
-      ctx.font = "11px 'Press Start 2P'";
-      ctx.fillText(`SCORE`, 22, 34);
-      ctx.font = "16px 'Press Start 2P'";
-      ctx.fillText(String(Math.floor(score)).padStart(5, '0'), 22, 56);
+      ctx.font = "10px 'Press Start 2P'";
+      ctx.fillText(`SCORE`, 20, 32);
+      ctx.font = "15px 'Press Start 2P'";
+      ctx.fillText(String(Math.floor(score)).padStart(5, '0'), 20, 54);
 
-      // กระดูกที่เก็บได้
       ctx.font = "10px 'Press Start 2P'";
       ctx.fillStyle = "#ffcc00";
-      ctx.fillText(`🦴 ${bonesCollected}`, 22, 80);
+      ctx.fillText(`🦴 ${bonesCollected}`, 20, 76);
 
-      // Level
       ctx.fillStyle = "#000";
-      ctx.font = "11px 'Press Start 2P'";
-      ctx.fillText(`LEVEL: ${level}`, 320, 34);
+      ctx.font = "10px 'Press Start 2P'";
+      ctx.fillText(`LVL: ${level}`, 330, 32);
 
-      // โลโก้เกมกลางจอ
+      // Speed text indicator
+      ctx.font = "8px 'Press Start 2P'";
+      ctx.fillStyle = level > 3 ? "#ff3333" : "#00aa44";
+      ctx.fillText(`SPD: ${Math.round(speed * 1000)}`, 330, 52);
+
+      // Title
       ctx.textAlign = "center";
       ctx.fillStyle = "#ffcc00";
-      ctx.font = "13px 'Press Start 2P'";
-      ctx.shadowColor = "#000";
-      ctx.shadowOffsetX = 2;
-      ctx.shadowOffsetY = 2;
-      ctx.fillText("PAW PATROL", canvas.width / 2, 34);
-      ctx.fillText("PONTIFICATOR", canvas.width / 2, 54);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "8px 'Press Start 2P'";
-      ctx.fillText("AVOID POOP & GET BONES!", canvas.width / 2, 74);
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
+      ctx.font = "12px 'Press Start 2P'";
+      ctx.fillText("PAW PATROL", canvas.width / 2, 32);
+      ctx.font = "10px 'Press Start 2P'";
+      ctx.fillText("PONTIFICATOR", canvas.width / 2, 48);
       ctx.textAlign = "start";
     }
 
-    // ----------------- GAME LOOP -----------------
+    // ----------------- GAME LOOP & PHYSICS -----------------
 
     let roadOffset = 0;
 
@@ -555,38 +570,54 @@
       tickCount++;
 
       roadOffset = (roadOffset + speed) % 1.0;
-      score += speed * 120; // ได้คะแนนตามระยะทาง
-      level = 1 + Math.floor(score / 500);
-      speed = 0.0065 + (level * 0.0012);
+      score += speed * 120;
+      level = 1 + Math.floor(score / 450);
+      speed = 0.006 + (level * 0.0011);
 
-      // บังคับทิศทาง
-      if (keys["ArrowLeft"] || keys["a"]) player.laneX -= 0.045;
-      if (keys["ArrowRight"] || keys["d"]) player.laneX += 0.045;
-      player.laneX = Math.max(-0.85, Math.min(0.85, player.laneX));
+      // --- ระบบควบคุมแบบนุ่มนวล (Smooth Inertia & Gyro) ---
+      let moveDir = 0;
+      if (keys.left) moveDir -= 1;
+      if (keys.right) moveDir += 1;
 
-      // สร้างอุปสรรค / ไอเทม
+      // ผสานการเอียงจอ Gyro
+      if (gyroActive) {
+        moveDir += gyroOffset * 1.3;
+      }
+
+      // Physics acceleration & damping
+      const accel = 0.0055;
+      const friction = 0.82;
+      player.vx += moveDir * accel;
+      player.vx *= friction;
+      player.x += player.vx;
+
+      // บังคับขอบถนน
+      if (player.x < -0.82) { player.x = -0.82; player.vx = 0; }
+      if (player.x > 0.82) { player.x = 0.82; player.vx = 0; }
+
+      // เอียงตัวตามแรงเหวี่ยง
+      player.tiltAngle = player.vx * 3.8;
+
+      // Spawner
       spawnTimer++;
-      const spawnInterval = Math.max(22, 65 - level * 4);
+      const spawnInterval = Math.max(22, 60 - level * 4);
       if (spawnTimer >= spawnInterval) {
         spawnEntity();
         spawnTimer = 0;
       }
 
-      // ตรวจสอบตำแหน่ง Entity
+      // Entity Updates & Collision
       for (let i = obstacles.length - 1; i >= 0; i--) {
         const ent = obstacles[i];
         ent.z += speed;
 
-        // ชนเมื่อ z ใกล้เคียงตัวผู้เล่น
-        if (ent.z > 0.80 && ent.z < 0.96) {
-          const hitRadius = ent.kind === 'poop' ? (ent.type === 'big' ? 0.26 : 0.17) : 0.19;
-          
-          if (Math.abs(ent.laneX - player.laneX) < hitRadius) {
+        if (ent.z > 0.80 && ent.z < 0.94) {
+          const hitRadius = ent.kind === 'poop' ? (ent.type === 'big' ? 0.22 : 0.15) : 0.17;
+          if (Math.abs(ent.laneX - player.x) < hitRadius) {
             if (ent.kind === 'poop') {
               triggerGameOver();
               return;
             } else if (ent.kind === 'bone') {
-              // เก็บกระดูกสำเร็จ!
               score += ent.value;
               bonesCollected++;
               const pos = getPerspectivePos(ent.laneX, ent.z);
@@ -597,10 +628,7 @@
           }
         }
 
-        // ลบเมื่อหลุดจอ
-        if (ent.z > 1.05) {
-          obstacles.splice(i, 1);
-        }
+        if (ent.z > 1.05) obstacles.splice(i, 1);
       }
     }
 
@@ -610,20 +638,14 @@
       drawBackground();
       drawSidewalk(roadOffset);
 
-      // วาด Entity ตามลำดับความลึก (Z-Sorting)
       obstacles.sort((a, b) => a.z - b.z);
       obstacles.forEach(ent => {
         if (ent.kind === 'poop') drawPoop(ent);
         else if (ent.kind === 'bone') drawBone(ent);
       });
 
-      // วาดตัวละครหมา
       drawDog(player);
-
-      // เอฟเฟกต์แต้มลอย
       drawFloatingTexts();
-
-      // UI
       drawUI();
     }
 
@@ -645,18 +667,17 @@
       score = 0;
       bonesCollected = 0;
       level = 1;
-      speed = 0.0065;
+      speed = 0.006;
       obstacles = [];
       floatingTexts = [];
-      player.laneX = 0;
+      player.x = 0;
+      player.vx = 0;
       isGameOver = false;
       gameOverScreen.style.display = "none";
       requestAnimationFrame(gameLoop);
     }
 
     restartBtn.addEventListener("click", resetGame);
-
-    // เริ่มเกม
     requestAnimationFrame(gameLoop);
   </script>
 </body>
